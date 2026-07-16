@@ -65,8 +65,8 @@ lines that succeeded.
 | `TotalHandler`     | type      | `(lines: readonly LineResult[]) => number \| undefined` — a pure total port over resolved lines.                                                                |
 | `LineDefinition`   | interface | `{ id, name, description?, rate, metadata? }` — one rateable line: a quantitative definition joined to display metadata.                                        |
 | `RatingDefinition` | interface | `{ id, name, description?, lines, metadata? }` — a pure authored rating: a named, ordered set of lines.                                                         |
-| `Premise`          | interface | `{ field?, label?, comparison?, expected?, actual?, met? }` — a shared checked-evidence row rendered into a display-neutral sentence.                           |
-| `WorksheetFactor`  | interface | `{ id, name?, description?, applied, value?, premises }` — a resolved quantitative factor joined to its authored metadata.                                      |
+| `Evidence`         | interface | `{ field?, label?, comparison?, expected?, actual?, met? }` — a checked-evidence row rendered into a display-neutral sentence.                                  |
+| `WorksheetFactor`  | interface | `{ id, name?, description?, applied, value?, evidence }` — a resolved quantitative factor joined to its authored metadata.                                      |
 | `WorksheetGroup`   | interface | `{ id, name?, description?, applied, value, factors }` — a resolved quantitative group joined to its authored metadata.                                         |
 | `Step`             | interface | `{ stage, id?, name?, value, expression? }` — a display-neutral worksheet derivation step.                                                                      |
 | `Worksheet`        | interface | `{ id, name, aggregation, precision?, value, groups, steps, trace, errors, success }` — a quantitative definition joined to its result, the rating audit trail. |
@@ -120,13 +120,13 @@ isRatingDefinition({ id: 'r1', name: 'Rating', lines: [] }) // true
 
 ### Helpers
 
-Pure, exported utility functions (AGENTS §4.3) — the premise construction and
+Pure, exported utility functions (AGENTS §4.3) — the evidence construction and
 worksheet-joining behind `Rater`'s `rate` projection.
 
 | API                | Kind     | Summary                                                                                                   |
 | ------------------ | -------- | --------------------------------------------------------------------------------------------------------- |
-| `premiseCheck`     | function | Build a `Premise` from an evaluated `Check`.                                                              |
-| `checkPremises`    | function | Build premises from a quantitative factor's authored checks and evaluated check results.                  |
+| `evidenceCheck`    | function | Build an `Evidence` row from an evaluated `Check`.                                                        |
+| `checkEvidence`    | function | Build evidence rows from a quantitative factor's authored checks and evaluated check results.             |
 | `worksheetFactor`  | function | Join one authored quantitative factor to its evaluated `FactorResult`.                                    |
 | `worksheetGroup`   | function | Join one authored quantitative group to its evaluated `GroupResult`.                                      |
 | `worksheetStep`    | function | Build one display-neutral `Step` row.                                                                     |
@@ -135,18 +135,18 @@ worksheet-joining behind `Rater`'s `rate` projection.
 | `ratedLine`        | function | Build a rated `LineResult` from a line's evaluated `QuantitativeResult`.                                  |
 | `sumAmounts`       | function | Sum defined line amounts.                                                                                 |
 
-Premise construction — a `Check` (and its evaluated result) rendered into a
-display-neutral `Premise`; `labels` (keyed by dot-joined field) override the resolved
+Evidence construction — a `Check` (and its evaluated result) rendered into a
+display-neutral `Evidence` row; `labels` (keyed by dot-joined field) override the resolved
 `label`:
 
 ```ts
-import { checkPremises, premiseCheck } from '@orkestrel/rater'
+import { checkEvidence, evidenceCheck } from '@orkestrel/rater'
 import { check } from '@orkestrel/reason'
 
 const evaluated = check('age', 'above', 18)
-premiseCheck(evaluated, 25, true) // { field: 'age', comparison: 'above', expected: 18, actual: 25, met: true }
-premiseCheck(evaluated, 25, true, { age: 'Age' }) // labels override → adds { label: 'Age' }
-checkPremises([evaluated], [{ field: 'age', met: true, actual: 25 }])
+evidenceCheck(evaluated, 25, true) // { field: 'age', comparison: 'above', expected: 18, actual: 25, met: true }
+evidenceCheck(evaluated, 25, true, { age: 'Age' }) // labels override → adds { label: 'Age' }
+checkEvidence([evaluated], [{ field: 'age', met: true, actual: 25 }])
 ```
 
 Worksheet joining and line assembly — one authored quantitative definition and its
