@@ -259,4 +259,97 @@ describe('ProgramManager', () => {
 			engine.destroy()
 		})
 	})
+
+	describe('listener error isolation', () => {
+		it('isolates a throwing add listener and still runs a sibling listener', () => {
+			const errors = createRecorder<readonly [error: unknown, event: string]>()
+			const sibling = createRecorder<readonly [id: string]>()
+			const manager = createProgramManager({ error: errors.handler })
+			manager.emitter.on('add', () => {
+				throw new Error('listener boom')
+			})
+			manager.emitter.on('add', sibling.handler)
+			const program = manager.add(buildDefinition('isolated'))
+			expect(program.id).toBe('isolated')
+			expect(errors.count).toBe(1)
+			expect(errors.calls[0]?.[1]).toBe('add')
+			expect(sibling.count).toBe(1)
+			manager.destroy()
+		})
+	})
+
+	describe('reentrancy', () => {
+		it('supports a remove listener that destroys the manager mid-drain', () => {
+			const destroyed = createRecorder<readonly []>()
+			const manager = createProgramManager({
+				programs: [buildDefinition('a'), buildDefinition('b')],
+				on: { destroy: destroyed.handler },
+			})
+			manager.emitter.on('remove', () => {
+				manager.destroy()
+			})
+			expect(() => manager.destroy()).not.toThrow()
+			expect(destroyed.count).toBe(1)
+		})
+
+		it('destroy is idempotent after a listener re-entry', () => {
+			const manager = createProgramManager({ programs: [buildDefinition('a')] })
+			manager.emitter.on('remove', () => {
+				manager.destroy()
+			})
+			manager.destroy()
+			expect(() => manager.destroy()).not.toThrow()
+		})
+	})
+
+	describe('construction-failure teardown', () => {
+		it('throws DUPLICATE, fires remove once and destroy once, and leaves injected deps usable', () => {
+			const engine = createReason({
+				reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
+				bail: false,
+			})
+			const qualifier = createQualifier({ engine })
+			const rater = createRater({ engine })
+			const removed = createRecorder<readonly [id: string]>()
+			const destroyed = createRecorder<readonly []>()
+			let error: unknown
+			try {
+				createProgramManager({
+					qualifier,
+					rater,
+					engine,
+					programs: [standardProgramDefinition, standardProgramDefinition],
+					on: { remove: removed.handler, destroy: destroyed.handler },
+				})
+				expect.unreachable('expected DUPLICATE')
+			} catch (caught) {
+				error = caught
+			}
+			expect(error).toMatchObject({ code: 'DUPLICATE' })
+			expect(removed.count).toBe(1)
+			expect(destroyed.count).toBe(1)
+			expect(qualifier.qualify(eligibleSubject, standardQualification).success).toBe(true)
+			qualifier.destroy()
+			rater.destroy()
+			engine.destroy()
+		})
+	})
+
+	describe('post-destroy accessors', () => {
+		it('throws DESTROYED from every accessor and mutator, but keeps the emitter reachable', () => {
+			const manager = createProgramManager({ programs: [buildDefinition('a')] })
+			manager.destroy()
+			expect(() => manager.size).toThrowError(expect.objectContaining({ code: 'DESTROYED' }))
+			expect(() => manager.has('a')).toThrowError(expect.objectContaining({ code: 'DESTROYED' }))
+			expect(() => manager.program('a')).toThrowError(
+				expect.objectContaining({ code: 'DESTROYED' }),
+			)
+			expect(() => manager.programs()).toThrowError(expect.objectContaining({ code: 'DESTROYED' }))
+			expect(() => manager.remove('a')).toThrowError(expect.objectContaining({ code: 'DESTROYED' }))
+			expect(() => manager.add(buildDefinition('b'))).toThrowError(
+				expect.objectContaining({ code: 'DESTROYED' }),
+			)
+			expect(() => manager.emitter).not.toThrow()
+		})
+	})
 })

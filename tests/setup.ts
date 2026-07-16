@@ -451,3 +451,159 @@ export function buildCarrierProgram(): ProgramDefinition {
 export function cloneSubject(subject: Subject): Subject {
 	return { ...subject }
 }
+
+/**
+ * Create a reason engine registering ONLY the quantitative reasoner — used to
+ * exercise a `'logical'`-reasoning validation path with no logical reasoner
+ * registered (a safe, non-throwing `engine.validate()` miss).
+ */
+export function createQuantOnlyEngine(options?: ReasonOptions): ReasonInterface {
+	return createReason({ reasoners: [createQuantitativeReasoner()], ...options, bail: false })
+}
+
+/**
+ * Build a logical definition with a single premise-less rule.
+ *
+ * @remarks
+ * A premise-less rule never applies but is a genuine, non-throwing
+ * `LogicalReasoner` execution failure — `reason()` returns
+ * `success: false` with a `"has no premises — skipped"` error entry. Used to
+ * exercise gate/authority error propagation without a technical (thrown)
+ * failure.
+ */
+export function buildBrokenLogicalDefinition(id: string): LogicalDefinition {
+	return logicalDefinition(id, 'Broken definition', [
+		rule(`${id}-rule`, [], atom('limited', 'equals', true)),
+	])
+}
+
+export const zeroPassQualification = qualificationDefinition(
+	'zero-pass-qualification',
+	'Zero pass qualification',
+	[],
+)
+
+export const brokenAggregateGateProgramDefinition = programDefinition(
+	'broken-aggregate-gate',
+	'Broken aggregate gate program',
+	zeroPassQualification,
+	undefined,
+	{
+		aggregate: aggregateDefinition(['amount'], {
+			gates: buildBrokenLogicalDefinition('broken-aggregate-gates'),
+		}),
+	},
+)
+
+export const brokenAuthorityProgramDefinition = programDefinition(
+	'broken-authority',
+	'Broken authority program',
+	zeroPassQualification,
+	undefined,
+	{ authority: buildBrokenLogicalDefinition('broken-authority-gates') },
+)
+
+/** An eligibility-only definition (no `rating`) reusing the standard qualification. */
+export const eligibilityOnlyProgramDefinition = programDefinition(
+	'eligibility-only',
+	'Eligibility-only program',
+	standardQualification,
+)
+
+/** An eligibility-only definition reusing the conditional qualification. */
+export const eligibilityOnlyConditionalProgramDefinition = programDefinition(
+	'eligibility-only-conditional',
+	'Eligibility-only conditional program',
+	conditionalProgramDefinition.qualification,
+)
+
+/** An eligibility-only definition reusing the referral qualification. */
+export const eligibilityOnlyReferralProgramDefinition = programDefinition(
+	'eligibility-only-referral',
+	'Eligibility-only referral program',
+	referralProgramDefinition.qualification,
+)
+
+/** An eligibility-only definition with a clean authority. */
+export const eligibilityOnlyWithAuthorityProgramDefinition = programDefinition(
+	'eligibility-only-authority',
+	'Eligibility-only authority program',
+	standardQualification,
+	undefined,
+	{ authority: cleanAuthority },
+)
+
+/** An eligibility-only definition with a notice scoped to a non-existent rating line. */
+export function buildEligibilityOnlyNoticeMissingScopeDefinition(): ProgramDefinition {
+	return programDefinition(
+		'eligibility-only-notice-missing',
+		'Eligibility-only notice missing scope program',
+		standardQualification,
+		undefined,
+		{ notices: [noticeDefinition('scoped', 'Scoped notice', { scope: 'base' })] },
+	)
+}
+
+export const eligibilityOnlyBatchSubjects: Subject[] = [eligibleSubject, ineligibleSubject]
+
+/** A program failing qualification (referral) with a clean authority attached. */
+export const failedQualificationWithAuthorityProgramDefinition = programDefinition(
+	failedQualificationProgramDefinition.id,
+	failedQualificationProgramDefinition.name,
+	failedQualificationProgramDefinition.qualification,
+	failedQualificationProgramDefinition.rating,
+	{ authority: cleanAuthority },
+)
+
+const allScopedGates = logicalDefinition('all-scoped-gates', 'All scoped gates', [
+	rule('frame', [atom('construction', 'equals', 'Frame')], atom('frame', 'equals', true)),
+])
+
+export const allLinesScopedOutProgramDefinition = programDefinition(
+	'all-scoped',
+	'All lines scoped out program',
+	qualificationDefinition(
+		'all-scoped-qualification',
+		'All scoped qualification',
+		[allScopedGates],
+		{
+			rulings: [
+				rulingDefinition('frame-wind', 'all-scoped-gates', 'frame', 'restriction', {
+					scope: 'wind',
+					message: 'Wind is unavailable for Frame construction',
+				}),
+				rulingDefinition('frame-exwind', 'all-scoped-gates', 'frame', 'restriction', {
+					scope: 'exWind',
+					message: 'Ex-wind is unavailable for Frame construction',
+				}),
+			],
+		},
+	),
+	ratingDefinition('all-scoped-rating', 'All scoped rating', [
+		lineDefinition('wind', 'Wind', windRate),
+		lineDefinition('exWind', 'Ex-Wind', exWindRate),
+	]),
+)
+
+/** Build `count` distinct eligible/ineligible-alternating batch subjects. */
+export function buildLargeBatch(count: number): Subject[] {
+	return Array.from({ length: count }, (_, index) => ({
+		id: `bulk-${index}`,
+		licensed: index % 2 === 0,
+		amount: index,
+		location: index % 3 === 0 ? 'east' : 'west',
+	}))
+}
+
+/** Batch subjects sharing the same `id`, distinguished by `licensed`. */
+export const sharedIdBatchSubjects: Subject[] = [
+	{ id: 'shared', licensed: true, amount: 5, location: 'east' },
+	{ id: 'shared', licensed: false, amount: 7, location: 'west' },
+]
+
+/** Build a subject carrying its own `__proto__` / `constructor` OWN keys via JSON parsing. */
+export function buildHostileSubject(): Subject {
+	return JSON.parse(
+		'{"id":"hostile","licensed":true,"__proto__":{"polluted":true},"constructor":{"polluted":true}}',
+	)
+}

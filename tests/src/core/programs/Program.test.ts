@@ -3,20 +3,37 @@ import { createProgram } from '@src/core'
 import { createQualifier } from '@orkestrel/qualifier'
 import { createRater } from '@orkestrel/rater'
 import { createLogicalReasoner, createQuantitativeReasoner, createReason } from '@orkestrel/reason'
+import { STATUS_PRECEDENCE } from '@src/core'
+import type { Subject } from '@orkestrel/reason'
 import {
+	allLinesScopedOutProgramDefinition,
 	batchAggregateProgramDefinition,
 	batchSubjects,
+	brokenAggregateGateProgramDefinition,
+	brokenAuthorityProgramDefinition,
 	buildAggregateGateProgram,
 	buildAuthorityProgram,
+	buildEligibilityOnlyNoticeMissingScopeDefinition,
+	buildHostileSubject,
+	buildLargeBatch,
 	cleanAuthority,
 	conditionalAuthority,
 	conditionalProgramDefinition,
 	conditionalSubject,
 	cloneSubject,
+	createRecorder,
+	createRecordingEngine,
+	createRecordingRater,
+	eligibilityOnlyBatchSubjects,
+	eligibilityOnlyConditionalProgramDefinition,
+	eligibilityOnlyProgramDefinition,
+	eligibilityOnlyReferralProgramDefinition,
+	eligibilityOnlyWithAuthorityProgramDefinition,
 	eligibleSubject,
 	emptyCollectionsProgramDefinition,
 	coastalReferralSubject,
 	emptyLinesProgramDefinition,
+	failedQualificationWithAuthorityProgramDefinition,
 	frameSubject,
 	ineligibleSubject,
 	noticeProgramDefinition,
@@ -25,6 +42,7 @@ import {
 	referralSubject,
 	scopedProgramDefinition,
 	scopedReferralProgramDefinition,
+	sharedIdBatchSubjects,
 	standardProgramDefinition,
 	unratedAuthority,
 } from '../../../setup.js'
@@ -397,6 +415,436 @@ describe('Program', () => {
 			const program = createProgram(standardProgramDefinition)
 			program.destroy()
 			expect(() => program.destroy()).not.toThrow()
+		})
+	})
+
+	describe('aggregate-gate error propagation', () => {
+		it('folds gate engine errors into a failed AggregateResult while every subject succeeds', () => {
+			const program = createProgram(brokenAggregateGateProgramDefinition, { validate: false })
+			const result = program.execute(batchSubjects)
+			expect(result.subjects.every((entry) => entry.success)).toBe(true)
+			expect(result.success).toBe(false)
+			expect(result.errors.length).toBeGreaterThan(0)
+			expect(result.trace.length).toBeGreaterThan(0)
+			program.destroy()
+		})
+	})
+
+	describe('authority error suppression', () => {
+		it('suppresses the decision and marks the result failed on a broken authority', () => {
+			const program = createProgram(brokenAuthorityProgramDefinition, { validate: false })
+			const result = program.execute({ id: 'broken-authority-subject' })
+			expect(result.success).toBe(false)
+			expect(result.decision).toBeUndefined()
+			expect(result.errors.length).toBeGreaterThan(0)
+			program.destroy()
+		})
+	})
+
+	describe('failed-qualification decision suppression', () => {
+		it('fails closed to referral with no decision even with a clean authority', () => {
+			const program = createProgram(failedQualificationWithAuthorityProgramDefinition)
+			const result = program.execute(eligibleSubject)
+			expect(result.success).toBe(false)
+			expect(result.eligibility).toBe('referral')
+			expect(result.status).toBe('referral')
+			expect(result.decision).toBeUndefined()
+			program.destroy()
+		})
+	})
+
+	describe('eligibility-only programs', () => {
+		it('resolves eligible with no rating and never calls the rater', () => {
+			const program = createProgram(eligibilityOnlyProgramDefinition)
+			const result = program.execute(eligibleSubject)
+			expect(result.status).toBe('eligible')
+			expect(result.rating).toBeUndefined()
+			program.destroy()
+		})
+
+		it('derives approved with a clean authority', () => {
+			const program = createProgram(eligibilityOnlyWithAuthorityProgramDefinition)
+			const result = program.execute(eligibleSubject)
+			expect(result.status).toBe('eligible')
+			expect(result.decision).toBe('approved')
+			program.destroy()
+		})
+
+		it('resolves ineligible and denied', () => {
+			const program = createProgram(eligibilityOnlyWithAuthorityProgramDefinition)
+			const result = program.execute(ineligibleSubject)
+			expect(result.status).toBe('ineligible')
+			expect(result.decision).toBe('denied')
+			program.destroy()
+		})
+
+		it('resolves conditional (and still approves with a clean authority)', () => {
+			const program = createProgram(eligibilityOnlyConditionalProgramDefinition)
+			const result = program.execute(conditionalSubject)
+			expect(result.status).toBe('conditional')
+			program.destroy()
+
+			const authorized = createProgram(
+				programDefinition(
+					eligibilityOnlyConditionalProgramDefinition.id,
+					eligibilityOnlyConditionalProgramDefinition.name,
+					eligibilityOnlyConditionalProgramDefinition.qualification,
+					undefined,
+					{ authority: cleanAuthority },
+				),
+			)
+			const approved = authorized.execute(conditionalSubject)
+			expect(approved.status).toBe('conditional')
+			expect(approved.decision).toBe('approved')
+			authorized.destroy()
+		})
+
+		it('resolves referral and submitted', () => {
+			const program = createProgram(
+				programDefinition(
+					eligibilityOnlyReferralProgramDefinition.id,
+					eligibilityOnlyReferralProgramDefinition.name,
+					eligibilityOnlyReferralProgramDefinition.qualification,
+					undefined,
+					{ authority: cleanAuthority },
+				),
+			)
+			const result = program.execute(referralSubject)
+			expect(result.status).toBe('referral')
+			expect(result.decision).toBe('submitted')
+			program.destroy()
+		})
+
+		it('throws MISSING at construction for a notice scoped to a non-existent line', () => {
+			let error: unknown
+			try {
+				createProgram(buildEligibilityOnlyNoticeMissingScopeDefinition())
+				expect.unreachable('expected MISSING')
+			} catch (caught) {
+				error = caught
+			}
+			expect(error).toMatchObject({ code: 'MISSING' })
+		})
+
+		it('never resolves unrated in a batch and never fires rate', () => {
+			const program = createProgram(eligibilityOnlyProgramDefinition)
+			const events = recordEvents(program)
+			const result = program.execute(eligibilityOnlyBatchSubjects)
+			expect(result.tallies.unrated.count).toBe(0)
+			expect(result.tallies.eligible.count).toBe(1)
+			expect(result.tallies.ineligible.count).toBe(1)
+			expect(events.names).not.toContain('rate')
+			program.destroy()
+		})
+
+		it('contrasts with an authored-but-empty rating, which still yields unrated', () => {
+			const program = createProgram(emptyLinesProgramDefinition)
+			const result = program.execute({ id: 'empty-contrast' })
+			expect(result.status).toBe('unrated')
+			program.destroy()
+		})
+	})
+
+	describe('batch rejects before any work', () => {
+		it('throws RESERVED before rating or recording any subject', () => {
+			const rater = createRecordingRater()
+			const program = createProgram(standardProgramDefinition, { rater })
+			const events = recordEvents(program)
+			let error: unknown
+			try {
+				program.execute([eligibleSubject, { id: 'x', aggregate: {} }])
+				expect.unreachable('expected RESERVED')
+			} catch (caught) {
+				error = caught
+			}
+			expect(error).toMatchObject({ code: 'RESERVED' })
+			expect(rater.count).toBe(0)
+			expect(events.names).toHaveLength(0)
+			program.destroy()
+			rater.destroy()
+		})
+	})
+
+	describe('all lines scoped out', () => {
+		it('resolves unrated with no rating and never calls the rater', () => {
+			const rater = createRecordingRater()
+			const program = createProgram(allLinesScopedOutProgramDefinition, { rater })
+			const result = program.execute(frameSubject)
+			expect(result.status).toBe('unrated')
+			expect(result.rating).toBeUndefined()
+			expect(rater.count).toBe(0)
+			program.destroy()
+			rater.destroy()
+		})
+	})
+
+	describe('listener error isolation', () => {
+		it('isolates a throwing qualify listener and still runs a sibling listener', () => {
+			const errors = createRecorder<readonly [error: unknown, event: string]>()
+			const sibling = createRecorder<readonly []>()
+			const program = createProgram(standardProgramDefinition, { error: errors.handler })
+			program.emitter.on('qualify', () => {
+				throw new Error('listener boom')
+			})
+			program.emitter.on('qualify', sibling.handler)
+			const result = program.execute(eligibleSubject)
+			expect(result.status).toBe('eligible')
+			expect(errors.count).toBe(1)
+			expect(errors.calls[0]?.[1]).toBe('qualify')
+			expect(sibling.count).toBe(1)
+			program.destroy()
+		})
+	})
+
+	describe('reentrancy', () => {
+		it('completes execute even when an execute listener destroys the program', () => {
+			const program = createProgram(standardProgramDefinition)
+			const destroyed = createRecorder<readonly []>()
+			program.emitter.on('destroy', destroyed.handler)
+			program.emitter.on('execute', () => {
+				program.destroy()
+			})
+			const result = program.execute(eligibleSubject)
+			expect(result.status).toBe('eligible')
+			expect(destroyed.count).toBe(1)
+			let error: unknown
+			try {
+				program.execute(eligibleSubject)
+				expect.unreachable('expected DESTROYED')
+			} catch (caught) {
+				error = caught
+			}
+			expect(error).toMatchObject({ code: 'DESTROYED' })
+		})
+
+		it('supports one re-entrant execute call from within an execute listener', () => {
+			const program = createProgram(standardProgramDefinition)
+			let reentered = false
+			let nestedResult: ReturnType<typeof program.execute> | undefined
+			program.emitter.on('execute', (result) => {
+				if (!reentered && result.id === standardProgramDefinition.id) {
+					reentered = true
+					nestedResult = program.execute(ineligibleSubject)
+				}
+			})
+			const outer = program.execute(eligibleSubject)
+			expect(outer.status).toBe('eligible')
+			expect(nestedResult?.status).toBe('ineligible')
+			program.destroy()
+		})
+	})
+
+	describe('hostile subjects', () => {
+		it('executes normally without polluting Object.prototype', () => {
+			const hostile = buildHostileSubject()
+			expect(Object.hasOwn(hostile, '__proto__')).toBe(true)
+			expect(Object.hasOwn(hostile, 'constructor')).toBe(true)
+			const program = createProgram(standardProgramDefinition)
+			const result = program.execute(hostile)
+			expect(result.status).toBe('eligible')
+			expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+			expect(Object.getPrototypeOf({})).toBe(Object.prototype)
+			program.destroy()
+		})
+	})
+
+	describe('aggregate numeric edges', () => {
+		it('treats NaN, Infinity, -Infinity, strings, and absent values as zero contribution', () => {
+			const program = createProgram(
+				programDefinition(
+					'numeric-edges',
+					'Numeric edges',
+					qualificationDefinition('numeric-edges-qualification', 'Numeric edges qualification', []),
+					undefined,
+					{
+						aggregate: {
+							fields: ['amount'],
+						},
+					},
+				),
+			)
+			const subjects: Subject[] = [
+				{ id: 'a', amount: Number.NaN },
+				{ id: 'b', amount: Number.POSITIVE_INFINITY },
+				{ id: 'c', amount: Number.NEGATIVE_INFINITY },
+				{ id: 'd', amount: 'not-a-number' },
+				{ id: 'e' },
+				{ id: 'f', amount: 10 },
+			]
+			const result = program.execute(subjects)
+			expect(result.sums.amount).toBe(10)
+			program.destroy()
+		})
+
+		it('sums a nested field path, keyed by its dot-joined name', () => {
+			const program = createProgram(
+				programDefinition(
+					'nested-field',
+					'Nested field',
+					qualificationDefinition('nested-field-qualification', 'Nested field qualification', []),
+					undefined,
+					{ aggregate: { fields: [['premium', 'total']] } },
+				),
+			)
+			const subjects: Subject[] = [
+				{ id: 'a', premium: { total: 5 } },
+				{ id: 'b', premium: { total: 7 } },
+			]
+			const result = program.execute(subjects)
+			expect(result.sums['premium.total']).toBe(12)
+			program.destroy()
+		})
+	})
+
+	describe('group-key semantics', () => {
+		it('collapses a missing field and an empty-string field into one group', () => {
+			const program = createProgram(
+				programDefinition(
+					'group-semantics',
+					'Group semantics',
+					qualificationDefinition(
+						'group-semantics-qualification',
+						'Group semantics qualification',
+						[],
+					),
+					undefined,
+					{ aggregate: { fields: ['amount'], by: 'location' } },
+				),
+			)
+			const subjects: Subject[] = [
+				{ id: 'a', amount: 1 },
+				{ id: 'b', amount: 2, location: '' },
+			]
+			const result = program.execute(subjects)
+			expect(result.groups).toHaveLength(1)
+			expect(result.groups[0]?.count).toBe(2)
+			program.destroy()
+		})
+
+		it('collides numeric and string partition keys', () => {
+			const program = createProgram(
+				programDefinition(
+					'group-collide',
+					'Group collide',
+					qualificationDefinition('group-collide-qualification', 'Group collide qualification', []),
+					undefined,
+					{ aggregate: { fields: ['amount'], by: 'code' } },
+				),
+			)
+			const subjects: Subject[] = [
+				{ id: 'a', amount: 1, code: 1 },
+				{ id: 'b', amount: 2, code: '1' },
+			]
+			const result = program.execute(subjects)
+			expect(result.groups).toHaveLength(1)
+			expect(result.groups[0]?.count).toBe(2)
+			program.destroy()
+		})
+	})
+
+	describe('batch scale and identity', () => {
+		it('handles a ~250-subject batch with exact tallies and sums', () => {
+			const program = createProgram(batchAggregateProgramDefinition)
+			const subjects = buildLargeBatch(250)
+			const result = program.execute(subjects)
+			expect(result.count).toBe(250)
+			const tallyCount = Object.values(result.tallies).reduce(
+				(total, tally) => total + tally.count,
+				0,
+			)
+			expect(tallyCount).toBe(250)
+			const expectedTotal = subjects.reduce((total, subject) => {
+				const amount = subject.amount
+				return total + (typeof amount === 'number' ? amount : 0)
+			}, 0)
+			expect(result.sums.amount).toBe(expectedTotal)
+			program.destroy()
+		})
+
+		it('carries two subjects sharing the same id as two distinct results', () => {
+			const program = createProgram(batchAggregateProgramDefinition)
+			const result = program.execute(sharedIdBatchSubjects)
+			expect(result.subjects).toHaveLength(2)
+			expect(result.subjects.every((entry) => entry.id === 'batch')).toBe(true)
+			expect(result.count).toBe(2)
+			program.destroy()
+		})
+	})
+
+	describe('empty batch with gates', () => {
+		it('still runs gates against a zero-count batch', () => {
+			const gates = logicalDefinition('empty-batch-gates', 'Empty batch gates', [
+				rule(
+					'empty-cap',
+					[atom(['aggregate', 'count'], 'below', 1)],
+					atom('limited', 'equals', true),
+					{ description: 'Empty batch flagged' },
+				),
+			])
+			const program = createProgram(
+				programDefinition(
+					'empty-batch',
+					'Empty batch',
+					qualificationDefinition('empty-batch-qualification', 'Empty batch qualification', []),
+					undefined,
+					{ aggregate: { fields: ['amount'], gates } },
+				),
+			)
+			const result = program.execute([])
+			expect(result.success).toBe(true)
+			expect(result.subjects).toHaveLength(0)
+			expect(result.count).toBe(0)
+			expect(result.determinations.filter((entry) => entry.effect === 'limit')).toHaveLength(1)
+			program.destroy()
+		})
+	})
+
+	describe('tallies shape', () => {
+		it('always exposes tallies in STATUS_PRECEDENCE order', () => {
+			const program = createProgram(batchAggregateProgramDefinition)
+			const result = program.execute(batchSubjects)
+			expect(Object.keys(result.tallies)).toEqual([...STATUS_PRECEDENCE])
+			program.destroy()
+		})
+	})
+
+	describe('readonly batch execute', () => {
+		it('accepts a readonly Subject[] parameter', () => {
+			const program = createProgram(standardProgramDefinition)
+			const frozen: readonly Subject[] = Object.freeze([eligibleSubject, ineligibleSubject])
+			const result = program.execute(frozen)
+			expect(result.count).toBe(2)
+			program.destroy()
+		})
+	})
+
+	describe('construction-failure teardown', () => {
+		it('fires destroy once and leaves the injected engine unused and usable', () => {
+			const engine = createRecordingEngine()
+			const destroyed = createRecorder<readonly []>()
+			const definition = programDefinition('', '', standardQualification, standardRating)
+			let error: unknown
+			try {
+				createProgram(definition, { engine, on: { destroy: destroyed.handler } })
+				expect.unreachable('expected DEFINITION')
+			} catch (caught) {
+				error = caught
+			}
+			expect(error).toMatchObject({ code: 'DEFINITION' })
+			expect(destroyed.count).toBe(1)
+			expect(engine.destroyCount).toBe(0)
+			const qualifier = createQualifier({ engine })
+			expect(qualifier.qualify(eligibleSubject, standardQualification).success).toBe(true)
+			qualifier.destroy()
+			engine.destroy()
+		})
+	})
+
+	describe('post-destroy accessors', () => {
+		it('keeps the emitter reachable after destroy', () => {
+			const program = createProgram(standardProgramDefinition)
+			program.destroy()
+			expect(() => program.emitter).not.toThrow()
 		})
 	})
 })

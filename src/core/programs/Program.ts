@@ -1,7 +1,7 @@
 import type { EmitterInterface } from '@orkestrel/emitter'
 import type { QualificationResult, QualifierInterface } from '@orkestrel/qualifier'
 import type { RaterInterface, RatingResult } from '@orkestrel/rater'
-import type { EvaluatorInterface, ReasonInterface, Subject } from '@orkestrel/reason'
+import type { EvaluatorInterface, LogicalResult, ReasonInterface, Subject } from '@orkestrel/reason'
 import type {
 	AggregateGroup,
 	AggregateProjection,
@@ -15,6 +15,7 @@ import type {
 	ProgramValidationResult,
 } from '../types.js'
 import { Emitter } from '@orkestrel/emitter'
+import { isArray } from '@orkestrel/contract'
 import { createQualifier } from '@orkestrel/qualifier'
 import { createRater } from '@orkestrel/rater'
 import {
@@ -28,6 +29,7 @@ import { ProgramError } from '../errors.js'
 import {
 	aggregateGroups,
 	aggregateSums,
+	assertProgramDefinition,
 	assertProgramSubject,
 	buildAggregateProjection,
 	buildAggregateRecord,
@@ -39,7 +41,6 @@ import {
 	buildQualificationSubject,
 	deriveStatus,
 	emptyTallies,
-	findMissingScopes,
 	selectProgramLines,
 	tallyProgram,
 	validateProgramDefinition,
@@ -56,8 +57,12 @@ import {
  * ORIGINAL subject; the qualifier's aggregate projection stays private. When no
  * qualifier, rater, or engine is injected the program creates ONE shared
  * quantitative-plus-logical engine, injects it into the qualifier and rater it
- * creates, and destroys only what it owns. `destroy()` is idempotent and tears
- * the emitter down last.
+ * creates, and destroys only what it owns. A definition failure during
+ * construction (an invalid definition under `options.validate`) tears down
+ * whatever the constructor had already allocated before throwing. `destroy()`
+ * is idempotent and REENTRANCY-SAFE — the destroyed flag is set BEFORE any
+ * teardown or the `destroy` event fires, so a listener that re-enters
+ * `destroy()` is a no-op — and tears the emitter down last.
  */
 export class Program implements ProgramInterface {
 	readonly #emitter: Emitter<ProgramEventMap>
@@ -77,14 +82,7 @@ export class Program implements ProgramInterface {
 	readonly definition: ProgramDefinition
 
 	constructor(definition: ProgramDefinition, options?: ProgramOptions) {
-		const missing = findMissingScopes(definition)
-		if (missing.length > 0) {
-			throw new ProgramError(
-				'MISSING',
-				`Unknown rating line reference: ${missing.join(', ')}`,
-				definition.id,
-			)
-		}
+		assertProgramDefinition(definition)
 		this.id = definition.id
 		this.name = definition.name
 		this.definition = definition
@@ -107,6 +105,7 @@ export class Program implements ProgramInterface {
 		if (this.#validate) {
 			const validation = this.validate()
 			if (!validation.valid) {
+				this.destroy()
 				throw new ProgramError('DEFINITION', validation.errors.join('; '), definition.id)
 			}
 		}
@@ -116,11 +115,12 @@ export class Program implements ProgramInterface {
 		return this.#emitter
 	}
 
-	execute(subjects: Subject[]): AggregateResult
+	// Array overload first (AGENTS §9.2) so a subject list resolves to the batch form.
+	execute(subjects: readonly Subject[]): AggregateResult
 	execute(subject: Subject): ProgramResult
-	execute(input: Subject | Subject[]): ProgramResult | AggregateResult {
+	execute(input: Subject | readonly Subject[]): ProgramResult | AggregateResult {
 		this.#alive()
-		if (Array.isArray(input)) return this.#aggregate(input)
+		if (isArray<Subject>(input)) return this.#aggregate(input)
 		return this.#subject(input)
 	}
 
@@ -131,10 +131,10 @@ export class Program implements ProgramInterface {
 
 	destroy(): void {
 		if (this.#destroyed) return
+		this.#destroyed = true
 		if (this.#qualifierOwned) this.#qualifier.destroy()
 		if (this.#raterOwned) this.#rater.destroy()
 		if (this.#engineOwned) this.#engine.destroy()
-		this.#destroyed = true
 		this.#emitter.emit('destroy')
 		this.#emitter.destroy()
 	}
@@ -149,7 +149,7 @@ export class Program implements ProgramInterface {
 			return this.#finish(subject, qualification, undefined)
 		}
 
-		const lines = selectProgramLines(this.definition.rating.lines, qualification.scopes)
+		const lines = selectProgramLines(this.definition.rating?.lines ?? [], qualification.scopes)
 		const rating = lines.length === 0 ? undefined : this.#rater.rate(lines, subject)
 		if (rating !== undefined) this.#emitter.emit('rate', rating)
 
@@ -164,7 +164,7 @@ export class Program implements ProgramInterface {
 		const notices = buildNotices(this.definition.notices ?? [], subject)
 		for (const notice of notices) this.#emitter.emit('determine', notice)
 
-		const status = deriveStatus(qualification, rating)
+		const status = deriveStatus(this.definition, qualification, rating)
 		let result = buildProgramResult(this.definition, qualification, rating, notices, status)
 
 		const authority = this.definition.authority
@@ -196,7 +196,7 @@ export class Program implements ProgramInterface {
 		return result
 	}
 
-	#aggregate(subjects: Subject[]): AggregateResult {
+	#aggregate(subjects: readonly Subject[]): AggregateResult {
 		for (const subject of subjects) assertProgramSubject(subject)
 
 		const definition = this.definition.aggregate
@@ -214,14 +214,15 @@ export class Program implements ProgramInterface {
 			return result
 		})
 
-		const determinations = this.#aggregateLimits(subjects.length, sums, groups)
+		const gates = this.#aggregateLimits(subjects.length, sums, groups)
 		const result = buildAggregateResult(
 			this.definition,
 			results,
-			determinations,
+			gates.determinations,
 			groups,
 			tallies,
 			sums,
+			gates.resolved === undefined ? undefined : { gates: gates.resolved },
 		)
 		this.#emitter.emit('aggregate', result)
 		return result
@@ -231,9 +232,9 @@ export class Program implements ProgramInterface {
 		count: number,
 		sums: Readonly<Record<string, number>>,
 		groups: readonly AggregateGroup[],
-	): readonly Determination[] {
+	): { readonly determinations: readonly Determination[]; readonly resolved?: LogicalResult } {
 		const gates = this.definition.aggregate?.gates
-		if (gates === undefined) return []
+		if (gates === undefined) return { determinations: [] }
 
 		const record = buildAggregateRecord(count, sums, groups)
 		const resolved = this.#engine.reason(record, gates)
@@ -243,7 +244,7 @@ export class Program implements ProgramInterface {
 
 		const determinations = buildLimits(gates, resolved, record, this.#evaluator, this.#labels)
 		for (const determination of determinations) this.#emitter.emit('determine', determination)
-		return determinations
+		return { determinations, resolved }
 	}
 
 	#alive(): void {

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import * as barrel from '@src/core'
 import { createProgram, createProgramManager } from '@src/core'
 import { createQualifier } from '@orkestrel/qualifier'
 import { createRater } from '@orkestrel/rater'
@@ -148,6 +149,21 @@ describe('integrations', () => {
 			expect(denied.rating).toBeUndefined()
 			expect(denied.decision).toBe('denied')
 			program.destroy()
+		})
+	})
+
+	describe('barrel exclusion', () => {
+		it('never re-exports collaborator internals from @orkestrel/qualifier, @orkestrel/rater, or @orkestrel/reason', () => {
+			expect('QuantitativeReasoner' in barrel).toBe(false)
+			expect('Factor' in barrel).toBe(false)
+			expect('WorksheetFactor' in barrel).toBe(false)
+			expect('Rater' in barrel).toBe(false)
+		})
+
+		it('still exports the program surface', () => {
+			expect('createProgram' in barrel).toBe(true)
+			expect('createProgramManager' in barrel).toBe(true)
+			expect('programDefinition' in barrel).toBe(true)
 		})
 	})
 })

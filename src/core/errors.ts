@@ -4,7 +4,8 @@ import type { ProgramErrorCode } from './types.js'
  * A coded programmer error thrown by the program layer.
  *
  * @remarks
- * `DUPLICATE` — a program id collision on `ProgramManager.add`. `MISSING` — an
+ * `DUPLICATE` — a program id collision on `ProgramManager.add`, or a duplicate
+ * authored rating-line or notice id. `MISSING` — an
  * authored notice or qualification ruling scope names no rating line.
  * `DEFINITION` — a program, qualification, rating, authority, or aggregate
  * policy failed validation. `MISMATCH` — an injected entity or a returned

@@ -2,14 +2,18 @@
 
 > A synchronous, deterministic **program engine**. A pure,
 > JSON-serializable `ProgramDefinition` composes one published
-> `QualificationDefinition` from `@orkestrel/qualifier` with one `RatingDefinition`
-> from `@orkestrel/rater`, plus optional notices, authority, and batch aggregate
-> policy. `Program` executes the workflow in one direction: qualify the subject, stop
-> on a terminal qualification, select the eligible rating lines, rate only those
-> lines, derive status, then evaluate optional authority. Qualification decides
-> whether rating happens — a globally ineligible, referred, or failed subject never
-> reaches the rater, and scoped ineligibility removes only the matching line before
-> the first rating call.
+> `QualificationDefinition` from `@orkestrel/qualifier` with an OPTIONAL
+> `RatingDefinition` from `@orkestrel/rater`, plus optional notices, authority, and
+> batch aggregate policy. `Program` executes the workflow in one direction: qualify
+> the subject, stop on a terminal qualification, select the eligible rating lines,
+> rate only those lines, derive status, then evaluate optional authority.
+> Qualification decides whether rating happens — a globally ineligible, referred, or
+> failed subject never reaches the rater, and scoped ineligibility removes only the
+> matching line before the first rating call. Omitting `rating` authors a
+> first-class ELIGIBILITY-ONLY program — the rater is never invoked, an eligible
+> subject resolves to `'eligible'` (or `'conditional'` under an applied condition),
+> and status is never `'unrated'`; an authored rating with zero lines still yields
+> `'unrated'`, unchanged.
 >
 > `Program` performs NO reasoning arithmetic. It owns orchestration and business
 > outcomes — notices, authority, status, decisions, and batch aggregates — while
@@ -131,7 +135,7 @@ manager.destroy()
 | `AggregateProjection`     | interface | `{ count, sums, group? }` — private per-subject aggregate context.                                                                             |
 | `AggregateGroup`          | interface | `{ key, count, sums }` — one partition.                                                                                                        |
 | `Tally`                   | interface | `{ count, sums }` — one status tally.                                                                                                          |
-| `ProgramDefinition`       | interface | `{ id, name, description?, qualification, rating, notices?, authority?, aggregate?, metadata? }`.                                              |
+| `ProgramDefinition`       | interface | `{ id, name, description?, qualification, rating?, notices?, authority?, aggregate?, metadata? }`.                                             |
 | `ProgramResult`           | interface | `{ id, name, eligibility, status, decision?, qualification, rating?, determinations, success, trace, errors }`.                                |
 | `AggregateResult`         | interface | `{ id, name, subjects, determinations, groups, tallies, count, sums, success, trace, errors }`.                                                |
 | `ProgramValidationResult` | interface | `{ valid, errors, warnings }`.                                                                                                                 |
@@ -144,10 +148,10 @@ manager.destroy()
 
 Every public data member is `readonly`, every optional key is omitted rather than
 `undefined`, and each name is single-word within its entity (AGENTS §4.1). Qualifier
-supplies `Eligibility`, `QualificationDefinition`, and `QualificationResult`; rater
-supplies `RatingDefinition` and `RatingResult`; reason supplies `LogicalDefinition`,
-`Subject`, and the engine; contract supplies `FieldPath` and `JSONValue`; the emitter
-supplies the observation types.
+supplies `Eligibility`, `Premise`, `QualificationDefinition`, and `QualificationResult`;
+rater supplies `RatingDefinition` and `RatingResult`; reason supplies
+`LogicalDefinition`, `Subject`, and the engine; contract supplies `FieldPath` and
+`JSONValue`; the emitter supplies the observation types.
 
 ### Constants
 
@@ -182,14 +186,14 @@ try {
 }
 ```
 
-| Code         | Meaning                                                                    |
-| ------------ | -------------------------------------------------------------------------- |
-| `DUPLICATE`  | A manager already contains the program id.                                 |
-| `MISSING`    | A notice, ruling scope, or other authored reference names no rating line.  |
-| `DEFINITION` | Program, qualification, rating, authority, or aggregate policy is invalid. |
-| `MISMATCH`   | An injected entity or returned result has the wrong contract.              |
-| `RESERVED`   | A subject already carries `aggregate` or `outcome`.                        |
-| `DESTROYED`  | An operation was attempted after teardown.                                 |
+| Code         | Meaning                                                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------------------- |
+| `DUPLICATE`  | A manager already contains the program id, or an authored definition has a duplicate rating-line or notice id. |
+| `MISSING`    | A notice, ruling scope, or other authored reference names no rating line.                                      |
+| `DEFINITION` | Program, qualification, rating, authority, or aggregate policy is invalid.                                     |
+| `MISMATCH`   | An injected entity or returned result has the wrong contract.                                                  |
+| `RESERVED`   | A subject already carries `aggregate` or `outcome`.                                                            |
+| `DESTROYED`  | An operation was attempted after teardown.                                                                     |
 
 Eligibility and rating failures remain nested result evidence rather than throws.
 
@@ -240,30 +244,33 @@ generic over any `Rule`/`Subject`/`EvaluatorInterface`) rather than re-implement
 them. `Program` owns one stateless `#evaluator` (created with `createEvaluator()`,
 never destroyed — it holds no state to tear down) purely to drive that reuse.
 
-| API                         | Kind     | Summary                                                                                                                  |
-| --------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `copyJSONValue`             | function | Deep-clone a `JSONValue` into a fresh tree that shares no reference with the input — used for defensive metadata copies. |
-| `selectProgramLines`        | function | Select rating-line ids from scoped qualification eligibility.                                                            |
-| `deriveStatus`              | function | Derive final status from qualification, rating, and scoped findings.                                                     |
-| `decideEligibility`         | function | Map global eligibility to its deterministic decision.                                                                    |
-| `buildNotices`              | function | Resolve authored notices into applied determinations.                                                                    |
-| `buildLimits`               | function | Convert a logical result's applied rules (authority or aggregate gates) into `limit` determinations, with rich premises. |
-| `buildProgramResult`        | function | Assemble a program result before or after rating.                                                                        |
-| `buildOutcomeProjection`    | function | Build the private authority projection.                                                                                  |
-| `buildQualificationSubject` | function | Add aggregate context to a private subject copy.                                                                         |
-| `findMissingScopes`         | function | Find authored scopes absent from the rating definition.                                                                  |
-| `hasReservedKey`            | function | Detect `aggregate` or `outcome` on a caller subject.                                                                     |
-| `assertProgramSubject`      | function | Assert a subject record and reserved-key safety.                                                                         |
-| `validateProgramDefinition` | function | Validate nested definitions, references, authority, and aggregate policy.                                                |
-| `aggregateSums`             | function | Sum configured fields across subjects.                                                                                   |
-| `aggregateGroups`           | function | Partition subjects and sum fields per key.                                                                               |
-| `buildAggregateProjection`  | function | Build one subject's overall and optional group aggregate context.                                                        |
-| `buildAggregateRecord`      | function | Build the reserved aggregate-gate subject.                                                                               |
-| `emptySums`                 | function | Build a zero record for configured fields.                                                                               |
-| `emptyTallies`              | function | Build complete zero tallies in status order.                                                                             |
-| `completeTallies`           | function | Fill missing statuses in a partial tally record.                                                                         |
-| `tallyProgram`              | function | Add one subject and its fields to the result-status tally.                                                               |
-| `buildAggregateResult`      | function | Assemble one batch result.                                                                                               |
+| API                         | Kind     | Summary                                                                                                                                         |
+| --------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `copyJSONValue`             | function | Deep-clone a `JSONValue` into a fresh tree that shares no reference with the input — used for defensive metadata copies.                        |
+| `selectProgramLines`        | function | Select rating-line ids from scoped qualification eligibility.                                                                                   |
+| `deriveStatus`              | function | Derive final status from a program definition's rating policy plus qualification and rating evidence.                                           |
+| `decideEligibility`         | function | Map global eligibility to its deterministic decision.                                                                                           |
+| `buildNotices`              | function | Resolve authored notices into applied determinations.                                                                                           |
+| `buildLimits`               | function | Convert a logical result's applied rules (authority or aggregate gates) into `limit` determinations, with rich premises.                        |
+| `buildProgramResult`        | function | Assemble a program result before or after rating.                                                                                               |
+| `buildOutcomeProjection`    | function | Build the private authority projection.                                                                                                         |
+| `buildQualificationSubject` | function | Add aggregate context to a private subject copy.                                                                                                |
+| `findMissingScopes`         | function | Find authored scopes absent from the rating definition.                                                                                         |
+| `hasReservedKey`            | function | Detect `aggregate` or `outcome` on a caller subject.                                                                                            |
+| `assertProgramSubject`      | function | Assert a subject record and reserved-key safety.                                                                                                |
+| `assertProgramDefinition`   | function | Assert always-on construction invariants — missing scope references and duplicate rating-line or notice ids — regardless of `options.validate`. |
+| `validateProgramDefinition` | function | Validate nested definitions, references, authority, and aggregate policy.                                                                       |
+| `formatGroupKey`            | function | Coerce a subject's partition-key field to its `String`-coerced group key.                                                                       |
+| `sumFields`                 | function | Fold one subject's finite aggregate field values into a fresh sums record.                                                                      |
+| `aggregateSums`             | function | Sum configured fields across subjects.                                                                                                          |
+| `aggregateGroups`           | function | Partition subjects and sum fields per key.                                                                                                      |
+| `buildAggregateProjection`  | function | Build one subject's overall and optional group aggregate context.                                                                               |
+| `buildAggregateRecord`      | function | Build the reserved aggregate-gate subject.                                                                                                      |
+| `emptySums`                 | function | Build a zero record for configured fields.                                                                                                      |
+| `emptyTallies`              | function | Build complete zero tallies in status order.                                                                                                    |
+| `completeTallies`           | function | Fill missing statuses in a partial tally record.                                                                                                |
+| `tallyProgram`              | function | Add one subject and its fields to the result-status tally.                                                                                      |
+| `buildAggregateResult`      | function | Assemble one batch result, folding an optional aggregate-gate evaluation's `trace`/`errors` in and requiring it error-free for `success`.       |
 
 The per-subject orchestration leaves guard the subject, select surviving lines, and
 map eligibility to a decision:
@@ -279,6 +286,7 @@ import {
 hasReservedKey({ id: 'r1' }) // false
 hasReservedKey({ id: 'r1', aggregate: {} }) // true
 assertProgramSubject({ id: 'r1' }) // narrows to Subject; throws ProgramError('RESERVED') on a reserved key
+assertProgramDefinition(definition) // throws ProgramError('MISSING' | 'DUPLICATE') at construction, regardless of options.validate
 selectProgramLines(lines, { wind: 'ineligible' }) // every line except the 'wind' line
 decideEligibility('eligible') // 'approved'
 ```
@@ -287,7 +295,14 @@ The batch leaves sum configured fields, partition subjects, seed zero records, a
 deep-copy metadata:
 
 ```ts
-import { aggregateGroups, aggregateSums, copyJSONValue, emptySums } from '@orkestrel/program'
+import {
+	aggregateGroups,
+	aggregateSums,
+	copyJSONValue,
+	emptySums,
+	formatGroupKey,
+	sumFields,
+} from '@orkestrel/program'
 
 const subjects = [
 	{ id: 'a', location: 'west', total: 100 },
@@ -297,6 +312,8 @@ const subjects = [
 
 aggregateSums(subjects, ['total']) // { total: 350 }
 aggregateGroups(subjects, ['total'], 'location') // [{ key: 'west', count: 2, sums: { total: 300 } }, { key: 'east', count: 1, sums: { total: 50 } }]
+formatGroupKey({ location: 'west' }, 'location') // 'west' — String-coerced, so a missing field and '' land in the same partition
+sumFields({ total: 0 }, subjects[0], ['total']) // { total: 100 } — a fresh record, only finite numbers contribute
 emptySums(['total']) // { total: 0 }
 copyJSONValue({ tier: 'gold', flags: [1, 2] }) // a fresh clone that shares no reference with the input
 ```
@@ -351,11 +368,11 @@ The package has no entity named `Rater`. Rating remains a sibling concern.
 The array overload is declared first (AGENTS §9.2). `execute` is the correct verb
 because it performs a composed workflow rather than qualification or rating alone.
 
-| Method     | Returns                              | Behavior                                                           |
-| ---------- | ------------------------------------ | ------------------------------------------------------------------ |
-| `execute`  | `AggregateResult` or `ProgramResult` | Execute an array as one aggregate-aware batch or one subject.      |
-| `validate` | `ProgramValidationResult`            | Validate this program and all nested definitions.                  |
-| `destroy`  | `void`                               | Idempotent teardown of the program emitter and owned dependencies. |
+| Method     | Returns                              | Behavior                                                                       |
+| ---------- | ------------------------------------ | ------------------------------------------------------------------------------ |
+| `execute`  | `AggregateResult` or `ProgramResult` | Execute a `readonly Subject[]` as one aggregate-aware batch, or one `Subject`. |
+| `validate` | `ProgramValidationResult`            | Validate this program and all nested definitions.                              |
+| `destroy`  | `void`                               | Idempotent teardown of the program emitter and owned dependencies.             |
 
 ```ts
 const aggregate = program.execute(subjects)
@@ -423,6 +440,11 @@ For one subject:
 Every stop still returns a complete, successful business result when the terminal
 eligibility itself was valid.
 
+When `ProgramDefinition.rating` is omitted, step 6 selects from an empty line list,
+step 7 always skips rating, and `rating` stays `undefined` for the whole execution —
+the program is eligibility-only and the rater is never invoked, yet the remaining
+steps (notices, status, authority, decision) still run.
+
 ### Qualification is terminal
 
 A globally `ineligible` or `referral` qualification — or a failed one — is terminal:
@@ -450,9 +472,12 @@ A scope names a rating-line id.
 | `ineligible`  | line omitted    | `conditional` when another line rates; otherwise `unrated` |
 | `referral`    | line omitted    | `referral`                                                 |
 
-Line selection happens BEFORE the first rating call — an excluded line is never
-evaluated merely to discard its amount. Qualification validation rejects a ruling
-scope not present in `ProgramDefinition.rating.lines`.
+This table applies when `rating` is authored — see Eligibility-only (Patterns) for
+the omitted-rating case, where `unrated` never occurs. Line selection happens BEFORE
+the first rating call — an excluded line is never evaluated merely to discard its
+amount. A ruling or notice scope naming no line in `ProgramDefinition.rating?.lines`
+(including every scope when `rating` is omitted entirely) is a hard authoring error —
+`assertProgramDefinition` throws `ProgramError('MISSING')` at construction.
 
 ### Conditions
 
@@ -472,7 +497,7 @@ A rating failure is not converted into ineligibility:
 - program status becomes `unrated`
 - program success becomes false because execution encountered technical errors
 - authority receives `rated: true` and `status: 'unrated'`
-- authority still runs and may emit `limit` determinations; only the `decision` is suppressed when status is `unrated`
+- authority still runs and may emit `limit` determinations; the `decision` is suppressed because `status` is `unrated` (one of the four decision gates, below)
 
 Scoped referral keeps global eligibility `eligible` while status remains `referral`, so a clean authority still yields an `approved` decision.
 
@@ -494,10 +519,13 @@ eligibility — never the mutable internal state of either sibling engine. Appli
 authority rules become `limit` determinations. A `decision` is present only when all
 four gates hold:
 
-1. an authority definition exists
-2. authority evaluation produced no errors
+1. an authority definition exists on the program
+2. execution SUCCEEDED — qualification, rating (when it ran), and authority all produced no errors
 3. no `limit` determination applied
 4. status is not `unrated`
+
+A technically-failed qualification therefore never yields a decision, even when an
+authority definition exists and would otherwise fire cleanly.
 
 The decision is deterministic in global eligibility (`eligible → approved`,
 `ineligible → denied`, `referral → submitted`), preserving the distinction between
@@ -518,6 +546,12 @@ For a subject array:
 8. run optional aggregate gates against the batch aggregate record (`count`, `sums`, `groups`)
 9. convert applied rules to batch `limit` determinations
 10. emit `aggregate`
+
+The aggregate-gate evaluation's `trace` and `errors` fold into
+`AggregateResult.trace` / `AggregateResult.errors` alongside every subject's own, and
+`AggregateResult.success` additionally requires the gate evaluation to have produced
+no errors — a gate evaluation failure fails the batch result even when every subject
+execution succeeded.
 
 Batch aggregation does not modify individual rating subjects.
 
@@ -548,9 +582,10 @@ Status is explicit policy, not an opaque severity reducer. It resolves in this o
 
 1. global ineligible
 2. global or scoped referral
-3. no successful rating (including a program with zero rating lines) → `unrated`
-4. applied condition or scoped restriction → `conditional`
-5. otherwise → `eligible`
+3. `ProgramDefinition.rating` is omitted (eligibility-only program) → `conditional` under an applied condition or scoped restriction, otherwise `eligible` — NEVER `unrated`
+4. no successful rating (including an AUTHORED rating with zero lines) → `unrated`
+5. applied condition or scoped restriction → `conditional`
+6. otherwise → `eligible`
 
 `STATUS_PRECEDENCE` exists only for complete tally output, never for hidden status
 logic.
@@ -579,8 +614,8 @@ No decision is emitted without an authority definition.
 - notices do not fail
 - a deliberately unrated result caused only by scoped exclusions can succeed
 
-`AggregateResult.success` requires every subject execution and aggregate gate to
-succeed.
+`AggregateResult.success` requires every subject execution to succeed AND the batch
+aggregate-gate evaluation (when configured) to have produced no errors.
 
 ### Ownership
 
@@ -589,13 +624,21 @@ A standalone `Program`:
 - borrows an injected reason engine or creates one shared quantitative-plus-logical engine
 - injects that engine into any internally created qualifier and rater
 - borrows independently injected qualifier and rater instances
-- destroys only owned dependencies, its emitter last, and is idempotent
+- destroys only owned dependencies, its emitter last, and is idempotent — `destroy()`
+  sets the destroyed flag FIRST, so a listener re-entering `destroy()` is a no-op
+- when construction fails (an invalid definition under `options.validate`), tears down
+  everything already allocated — owned dependencies and the emitter, firing `destroy`
+  — before rethrowing
 
 A `ProgramManager`:
 
 - creates or borrows one shared quantitative-plus-logical reason engine
 - injects the same qualifier, rater, and engine into every compiled program
-- destroys programs first, then owned shared dependencies, then its emitter last
+- destroys programs first, then owned shared dependencies, then its emitter last —
+  reentrancy-safe the same way, the destroyed flag is set FIRST
+- when a seed program fails during construction, tears the manager down — draining
+  and destroying every program already compiled (each firing `remove` first), then
+  owned shared dependencies, then the emitter — before rethrowing the original error
 
 ### Events
 
@@ -615,29 +658,36 @@ owned emitter.
 
 ### Validation
 
-`Program.validate` checks:
+`Program.validate` (`validateProgramDefinition`) checks:
 
-1. exact program shape
-2. non-empty id and name
-3. nested qualification validation
-4. nested rating validation
-5. every scoped qualification ruling names a rating line
-6. every notice scope names a rating line
-7. notice ids are unique
-8. aggregate fields are unique and non-empty
-9. aggregate `by` is non-empty when present
-10. aggregate gates are logical
-11. authority is logical
+1. exact shape via `isProgramDefinition` — this alone establishes rating structure and authority/gates shape, so validate performs no redundant re-check of either
+2. non-empty id
+3. non-empty name
+4. nested qualification validation, delegated to the injected qualifier and prefixed `qualification:`
+5. duplicate rating-line ids (when a rating is authored)
+6. every qualification ruling scope names an existing rating line — when NO rating is authored, ANY scope is an error, because no line exists to match
+7. duplicate notice ids
+8. every notice scope names an existing rating line — same empty-line rule when no rating is authored
+9. authority validated semantically by the shared reason engine, prefixed `authority:`
+10. aggregate fields are unique and non-empty
+11. aggregate `by` is non-empty when present
+12. aggregate gates validated semantically by the shared reason engine, prefixed `aggregate:`
 
-Every qualification pass and authority rule projects its derivations into its own
-namespace (`qualification.<passId>` and `outcome`, respectively) rather than onto the
-subject root, so an authored pass or rule id can never collide with the reserved
-`aggregate` or `outcome` working keys — there is no separate collision check to run.
+Always-on construction assertions run independently of `Program.validate` and of
+`options.validate`: `assertProgramDefinition` rejects a missing scope reference
+(`ProgramError('MISSING')`) and a duplicate rating-line or notice id
+(`ProgramError('DUPLICATE')`) at construction, every time.
+
+Qualification passes project their derivations under `qualification.<passId>` (the
+qualifier reserves the `qualification` subject key), and authority runs against a
+program-built private record whose only key is `outcome` — so an authored pass or
+rule id can never collide with a caller subject key or either reserved working key;
+there is no separate collision check to run.
 
 Warnings stay conservative (validators do not attempt full logical theorem proving)
 and include:
 
-- a program whose rating defines no lines validates with the warning `Program rating has no lines`, and every eligible subject then resolves to `status: 'unrated'` because no line can rate
+- a program whose rating defines no lines validates with the warning `Program rating has no lines`, and every eligible subject then resolves to `status: 'unrated'` because no line can rate (an OMITTED rating produces no such warning — it is eligibility-only by design, never `unrated`)
 - aggregate gates defined without aggregate fields
 
 ## Patterns
@@ -653,6 +703,38 @@ result.status // 'ineligible'
 ```
 
 No quantitative reasoner call occurs.
+
+### Eligibility-only
+
+```ts
+const definition = programDefinition('gate-only', 'Gate only', qualification)
+const program = createProgram(definition)
+
+const result = program.execute({ id: 'risk-1', licensed: true })
+
+result.rating // undefined — the rater is never invoked
+result.status // 'eligible', never 'unrated'
+```
+
+Omitting `rating` authors an eligibility-only program: qualification and its optional
+authority still run in full, but rating and its rating-line references disappear from
+the workflow entirely.
+
+### Rating-only
+
+```ts
+const qualification = qualificationDefinition('all', 'All risks', [])
+const definition = programDefinition('rate-only', 'Rate only', qualification, rating)
+const program = createProgram(definition)
+
+const result = program.execute({ id: 'risk-1' })
+
+result.qualification.eligibility // 'eligible' — an empty qualification qualifies every subject
+result.rating?.lines.length // every authored line rates
+```
+
+An empty qualification (no logical passes) qualifies every subject `eligible` with no
+scoped exclusions, so every authored line rates unconditionally.
 
 ### Scoped exclusion
 
@@ -807,6 +889,14 @@ rater.destroy()
 reason.destroy()
 ```
 
+Build an injected shared engine with `bail: false`, as shown above — matching the
+engine `Program` creates when none is injected. Ordinary evaluation failures (a failed
+factor, an unresolvable field) surface as nested result evidence regardless of `bail`;
+`bail` governs only a reasoner's own internal throw, which `bail: true` rethrows
+through `program.execute` as the sibling's error instead of nesting it. An engine
+missing a required reasoner always throws on dispatch, bypassing `bail` entirely —
+`Program.validate` reports that misconfiguration up front.
+
 ### Observing
 
 ```ts
@@ -838,10 +928,30 @@ rates a globally ineligible, referred, or failed subject; rates only eligible sc
 and skips rating when no scope remains; passes the original subject to the rater;
 keeps the aggregate projection private to qualification; preserves nested
 qualification findings and rating worksheets; derives conditional, referral, and
-unrated status; runs authority last and omits the decision when a limit applies or
-status is `unrated`; maps eligibility to decision; emits events in contract order;
-destroys only owned dependencies; rejects reserved subject keys and post-destroy
-calls; and never mutates definitions, subjects, or sibling results.
+unrated status; runs authority last and omits the decision when a limit applies,
+status is `unrated`, or execution technically failed; maps eligibility to decision;
+emits events in contract order; destroys only owned dependencies; rejects reserved
+subject keys and post-destroy calls; and never mutates definitions, subjects, or
+sibling results.
+
+The hardened suite additionally proves: an aggregate-gate evaluation error fails and
+surfaces on `AggregateResult`; a technically-failed qualification never yields a
+decision even with a clean authority; eligibility-only programs resolve status and
+decisions correctly, never call the rater, and still tally correctly in a batch;
+batch execution rejects a reserved-key subject before any work runs; an all-lines
+scoped-out subject resolves `unrated`; listener throws are isolated through each
+entity's `error` handler; `destroy`/`execute` reentrancy from within a listener, and
+`ProgramManager` reentrancy from a `remove` listener, are all no-ops or safe; a
+construction failure tears down everything already allocated (firing `destroy` /
+`remove` hooks) while leaving injected dependencies untouched; duplicate rating-line
+and notice ids are rejected at construction even under `validate: false`; hostile
+subjects carrying `__proto__` / `constructor` keys never pollute a prototype;
+aggregate numeric edges (`NaN`, `Infinity`, non-numeric, and absent values all
+contribute zero; nested field paths sum correctly) plus group-key coercion
+collisions, first-seen group order, large batches, and duplicate subject ids are all
+covered; validation branch messages match exactly; notice interpolation handles a
+missing token, nested paths, and en-US thousands grouping; and a limit determination
+for a description-less rule omits `message`.
 
 ### No-rate and original-subject proofs
 
@@ -869,10 +979,10 @@ standalone program destroys its own engine exactly once and idempotently.
 
 ### Public parity
 
-The barrel exports only program concerns — it must not re-export quantitative reason
-or rating implementation symbols such as `QuantitativeReasoner`, `Factor`,
-`WorksheetFactor`, or `Rater`. It consumes `RaterInterface` without claiming ownership
-of `Rater`.
+`tests/src/core/integrations.test.ts` asserts the barrel exports only program
+concerns — it must not re-export quantitative reason or rating implementation
+symbols such as `QuantitativeReasoner`, `Factor`, `WorksheetFactor`, or `Rater`. It
+consumes `RaterInterface` without claiming ownership of `Rater`.
 
 ### Gates
 

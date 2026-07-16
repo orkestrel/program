@@ -27,7 +27,12 @@ import { createProgram } from '../factories.js'
  * and rater and injects the same instances into every compiled program. `remove`
  * destroys the programs it removes; `destroy()` removes all programs, then
  * destroys only the owned shared dependencies, and tears the emitter down LAST.
- * Every call after `destroy()` throws {@link ProgramError} `'DESTROYED'`.
+ * A seed-program failure during construction tears the manager down (destroying
+ * whatever had already been compiled) before rethrowing the original error.
+ * `destroy()` is REENTRANCY-SAFE — the destroyed flag is set BEFORE any teardown
+ * or the `remove` / `destroy` events fire, so a `remove` listener that re-enters
+ * `destroy()` is a no-op. Every call after `destroy()` throws {@link ProgramError}
+ * `'DESTROYED'`.
  */
 export class ProgramManager implements ProgramManagerInterface {
 	readonly #emitter: Emitter<ProgramManagerEventMap>
@@ -58,7 +63,12 @@ export class ProgramManager implements ProgramManagerInterface {
 		this.#rater = options?.rater ?? createRater({ engine: this.#engine })
 		this.#validate = options?.validate ?? DEFAULT_PROGRAM_VALIDATE
 
-		for (const definition of options?.programs ?? []) this.add(definition)
+		try {
+			for (const definition of options?.programs ?? []) this.add(definition)
+		} catch (error) {
+			this.destroy()
+			throw error
+		}
 	}
 
 	get emitter(): EmitterInterface<ProgramManagerEventMap> {
@@ -106,16 +116,14 @@ export class ProgramManager implements ProgramManagerInterface {
 		return program
 	}
 
+	// Array overload first (AGENTS §9.2) so an id list resolves to the batch form.
 	remove(ids: readonly string[]): boolean
 	remove(id: string): boolean
 	remove(): void
 	remove(input?: string | readonly string[]): boolean | void {
 		this.#alive()
 		if (input === undefined) {
-			for (const program of this.#programs.splice(0)) {
-				program.destroy()
-				this.#emitter.emit('remove', program.id)
-			}
+			this.#drain()
 			return
 		}
 		if (Array.isArray(input)) {
@@ -128,13 +136,20 @@ export class ProgramManager implements ProgramManagerInterface {
 
 	destroy(): void {
 		if (this.#destroyed) return
-		this.remove()
+		this.#destroyed = true
+		this.#drain()
 		if (this.#qualifierOwned) this.#qualifier.destroy()
 		if (this.#raterOwned) this.#rater.destroy()
 		if (this.#engineOwned) this.#engine.destroy()
-		this.#destroyed = true
 		this.#emitter.emit('destroy')
 		this.#emitter.destroy()
+	}
+
+	#drain(): void {
+		for (const program of this.#programs.splice(0)) {
+			program.destroy()
+			this.#emitter.emit('remove', program.id)
+		}
 	}
 
 	#removeOne(id: string): boolean {

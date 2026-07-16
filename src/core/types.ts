@@ -28,18 +28,39 @@ export type ProgramErrorCode =
 	| 'RESERVED'
 	| 'DESTROYED'
 
-/** Optional fields accepted by `noticeDefinition`. */
+/**
+ * Optional fields accepted by `noticeDefinition`.
+ *
+ * @remarks
+ * `scope` — the rating-line id the notice presents against; omitted for an
+ * unscoped, program-wide notice.
+ */
 export interface NoticeInput {
 	readonly scope?: string
 }
 
-/** Optional fields accepted by `aggregateDefinition`. */
+/**
+ * Optional fields accepted by `aggregateDefinition`.
+ *
+ * @remarks
+ * `by` — the partition key field; omitted skips partitioning. `gates` — a
+ * logical definition evaluated once over the whole batch to derive `limit`
+ * determinations.
+ */
 export interface AggregateInput {
 	readonly by?: FieldPath
 	readonly gates?: LogicalDefinition
 }
 
-/** Optional fields accepted by `programDefinition`. */
+/**
+ * Optional fields accepted by `programDefinition`.
+ *
+ * @remarks
+ * `description` — a free-text summary. `notices` — authored unconditional
+ * notices. `authority` — a logical definition evaluated per subject to derive
+ * limit determinations and the decision. `aggregate` — batch aggregate fields,
+ * partition key, and gates. `metadata` — opaque caller data, copied fresh.
+ */
 export interface ProgramInput {
 	readonly description?: string
 	readonly notices?: readonly Notice[]
@@ -100,14 +121,17 @@ export interface Tally {
  * over the lines scoped eligibility left standing, through `@orkestrel/rater`.
  * `authority` (a logical definition) runs last, over the assembled result
  * extended with an outcome projection, to derive limit determinations and the
- * final decision.
+ * final decision. An omitted `rating` authors an ELIGIBILITY-ONLY program — the
+ * rater is never invoked, an eligible subject resolves to `'eligible'` (or
+ * `'conditional'` under an applied condition or scoped restriction), status is
+ * never `'unrated'`, and decisions remain reachable through `authority`.
  */
 export interface ProgramDefinition {
 	readonly id: string
 	readonly name: string
 	readonly description?: string
 	readonly qualification: QualificationDefinition
-	readonly rating: RatingDefinition
+	readonly rating?: RatingDefinition
 	readonly notices?: readonly Notice[]
 	readonly authority?: LogicalDefinition
 	readonly aggregate?: AggregateDefinition
@@ -122,8 +146,9 @@ export interface ProgramResult {
 	readonly status: Status
 	/**
 	 * @remarks
-	 * Present ONLY when the program HAS an `authority`, the authority result is
-	 * `logical`, no `limit` determinations fired, and status is not `unrated`.
+	 * Present ONLY when the program HAS an `authority`, the execution SUCCEEDED
+	 * (qualification, rating when it ran, and authority all produced no errors),
+	 * no `limit` determination applied, and status is not `unrated`.
 	 */
 	readonly decision?: Decision
 	readonly qualification: QualificationResult
@@ -174,7 +199,19 @@ export type ProgramEventMap = {
 	readonly destroy: readonly []
 }
 
-/** Options for `createProgram` / the `Program` constructor. */
+/**
+ * Options for `createProgram` / the `Program` constructor.
+ *
+ * @remarks
+ * `qualifier` — an injected, caller-owned qualifier; created and owned by the
+ * program when omitted. `rater` — an injected, caller-owned rater; created and
+ * owned when omitted. `engine` — an injected, caller-owned reason engine;
+ * created and owned when omitted. `validate` — validate the definition at
+ * construction (default {@link DEFAULT_PROGRAM_VALIDATE}). `labels` —
+ * field-to-label overrides for determination premises, keyed by dot-joined
+ * field. `on` — initial emitter hooks. `error` — the emitter's listener-error
+ * handler.
+ */
 export interface ProgramOptions {
 	readonly qualifier?: QualifierInterface
 	readonly rater?: RaterInterface
@@ -198,7 +235,7 @@ export interface ProgramInterface {
 	readonly name: string
 	readonly definition: ProgramDefinition
 	readonly emitter: EmitterInterface<ProgramEventMap>
-	execute(subjects: Subject[]): AggregateResult
+	execute(subjects: readonly Subject[]): AggregateResult
 	execute(subject: Subject): ProgramResult
 	validate(): ProgramValidationResult
 	destroy(): void
@@ -211,7 +248,19 @@ export type ProgramManagerEventMap = {
 	readonly destroy: readonly []
 }
 
-/** Options for `createProgramManager` / the `ProgramManager` constructor. */
+/**
+ * Options for `createProgramManager` / the `ProgramManager` constructor.
+ *
+ * @remarks
+ * `qualifier` — an injected, caller-owned qualifier; created and owned when
+ * omitted. `rater` — an injected, caller-owned rater; created and owned when
+ * omitted. `engine` — an injected, caller-owned reason engine; created and
+ * owned when omitted. `programs` — seed definitions compiled in order.
+ * `validate` — validate each seeded/added definition at construction (default
+ * {@link DEFAULT_PROGRAM_VALIDATE}). `labels` — field-to-label overrides for
+ * determination premises, keyed by dot-joined field. `on` — initial emitter
+ * hooks. `error` — the emitter's listener-error handler.
+ */
 export interface ProgramManagerOptions {
 	readonly qualifier?: QualifierInterface
 	readonly rater?: RaterInterface

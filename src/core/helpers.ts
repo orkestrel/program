@@ -23,8 +23,7 @@ import type {
 } from './types.js'
 import { isFiniteNumber, isRecord, resolveField } from '@orkestrel/contract'
 import { findRule, interpolateMessage, logicalPremises } from '@orkestrel/qualifier'
-import { isRatingDefinition } from '@orkestrel/rater'
-import { formatField } from '@orkestrel/reason'
+import { findDuplicates, formatField } from '@orkestrel/reason'
 import {
 	AGGREGATE_KEY,
 	ELIGIBILITY_DECISIONS,
@@ -37,8 +36,21 @@ import { isProgramDefinition } from './validators.js'
 /**
  * Return a fresh JSON value tree that does not alias the input.
  *
+ * @remarks
+ * The input must be an acyclic JSON tree of bounded depth — a pathologically
+ * deep tree throws the engine's `RangeError` (stack exhaustion) rather than
+ * hanging. Each copied record uses `Object.defineProperty` for own-property
+ * definition, which defends against prototype-pollution keys (`__proto__`).
+ *
  * @param value - The JSON value to copy
  * @returns A fresh JSON value
+ *
+ * @example
+ * ```ts
+ * import { copyJSONValue } from '@orkestrel/program'
+ *
+ * copyJSONValue({ a: [1, 2] }) // { a: [1, 2] }, a fresh copy
+ * ```
  */
 export function copyJSONValue(value: JSONValue): JSONValue {
 	if (value === null || typeof value !== 'object') return value
@@ -85,6 +97,13 @@ export function hasReservedKey(subject: Readonly<Record<string, unknown>>): bool
  * @param subject - The candidate subject to validate
  * @throws {@link ProgramError} `'MISMATCH'` when the value is not a record, or
  * `'RESERVED'` when it already carries the `aggregate` or `outcome` key
+ *
+ * @example
+ * ```ts
+ * import { assertProgramSubject } from '@orkestrel/program'
+ *
+ * assertProgramSubject({ id: 'r1' }) // does not throw
+ * ```
  */
 export function assertProgramSubject(subject: unknown): asserts subject is Subject {
 	if (!isRecord(subject)) {
@@ -128,31 +147,46 @@ export function selectProgramLines(
 }
 
 /**
- * Derive the final program {@link Status} from qualification and rating evidence.
+ * Derive the final program {@link Status} from a definition's rating policy and
+ * qualification/rating evidence.
  *
  * @remarks
  * Explicit policy, not an opaque precedence reduce (AGENTS §10): global
- * ineligibility or referral is terminal; a scoped referral yields `referral`; a
- * subject with no successful rating is `unrated`; an applied `condition` or an
- * applied scoped `restriction` (a line was removed but others rated) is
- * `conditional`; otherwise `eligible`.
+ * ineligibility or referral is terminal; a scoped referral yields `referral`;
+ * an applied `condition` or an applied scoped `restriction` (a line was
+ * removed but others rated) is `conditional`. When the definition OMITS
+ * `rating` the program is eligibility-only — status resolves to `conditional`
+ * or `eligible` and is NEVER `unrated`. Otherwise a subject with no successful
+ * rating is `unrated`.
  *
+ * @param definition - The authored program definition
  * @param qualification - The subject's qualification result
  * @param rating - The subject's rating result, when rating occurred
  * @returns The derived status
+ *
+ * @example
+ * ```ts
+ * import { deriveStatus } from '@orkestrel/program'
+ *
+ * deriveStatus(definition, qualification, rating) // 'eligible'
+ * ```
  */
-export function deriveStatus(qualification: QualificationResult, rating?: RatingResult): Status {
+export function deriveStatus(
+	definition: ProgramDefinition,
+	qualification: QualificationResult,
+	rating?: RatingResult,
+): Status {
 	if (qualification.eligibility === 'ineligible') return 'ineligible'
 	if (qualification.eligibility === 'referral') return 'referral'
 	if (Object.values(qualification.scopes).includes('referral')) return 'referral'
-	if (rating === undefined || rating.lines.length === 0) return 'unrated'
-	if (!rating.success) return 'unrated'
 	const conditional = qualification.findings.some(
 		(finding) =>
 			finding.applied &&
 			(finding.effect === 'condition' ||
 				(finding.scope !== undefined && finding.effect === 'restriction')),
 	)
+	if (definition.rating === undefined) return conditional ? 'conditional' : 'eligible'
+	if (rating === undefined || rating.lines.length === 0 || !rating.success) return 'unrated'
 	return conditional ? 'conditional' : 'eligible'
 }
 
@@ -186,6 +220,13 @@ export function decideEligibility(eligibility: Eligibility): Decision {
  * @param notices - The authored notices
  * @param subject - The original subject notices interpolate against
  * @returns A fresh list of notice determinations
+ *
+ * @example
+ * ```ts
+ * import { buildNotices } from '@orkestrel/program'
+ *
+ * buildNotices([{ id: 'min', message: 'Minimum applies' }], { id: 'r1' })
+ * ```
  */
 export function buildNotices(
 	notices: readonly Notice[],
@@ -219,6 +260,13 @@ export function buildNotices(
  * @param evaluator - The shared reason check evaluator
  * @param labels - Optional field-to-label overrides, keyed by dot-joined field
  * @returns A fresh list of `limit` determinations
+ *
+ * @example
+ * ```ts
+ * import { buildLimits } from '@orkestrel/program'
+ *
+ * buildLimits(authority, resolved, outcome, evaluator)
+ * ```
  */
 export function buildLimits(
 	definition: LogicalDefinition,
@@ -255,6 +303,13 @@ export function buildLimits(
  *
  * @param result - The preliminary program result computed before authority runs
  * @returns A record shaped for the authority's `outcome` projection
+ *
+ * @example
+ * ```ts
+ * import { buildOutcomeProjection } from '@orkestrel/program'
+ *
+ * buildOutcomeProjection(result) // { id, eligibility, status, rated, scopes }
+ * ```
  */
 export function buildOutcomeProjection(result: ProgramResult): Readonly<Record<string, unknown>> {
 	const total = result.rating?.total
@@ -278,8 +333,8 @@ export function buildOutcomeProjection(result: ProgramResult): Readonly<Record<s
  * ran) produced no errors — a valid ineligible or referral outcome still
  * succeeds. `trace` and `errors` accumulate the qualification's, every rated
  * line's worksheet trail, and the authority's. A `decision` is present ONLY when
- * an authority ran (`options.authority`), it produced no errors, no `limit`
- * determination applied, and status is not `unrated`.
+ * an authority ran (`options.authority`), the execution SUCCEEDED (`success`),
+ * no `limit` determination applied, and status is not `unrated`.
  *
  * @param definition - The authored program definition
  * @param qualification - The subject's qualification result
@@ -288,6 +343,13 @@ export function buildOutcomeProjection(result: ProgramResult): Readonly<Record<s
  * @param status - The already-derived status
  * @param options - Optional authority result driving the decision projection
  * @returns A fresh program result
+ *
+ * @example
+ * ```ts
+ * import { buildProgramResult } from '@orkestrel/program'
+ *
+ * buildProgramResult(definition, qualification, rating, [], 'eligible')
+ * ```
  */
 export function buildProgramResult(
 	definition: ProgramDefinition,
@@ -312,7 +374,7 @@ export function buildProgramResult(
 		authorityErrors.length === 0
 	const limited = determinations.some((entry) => entry.effect === 'limit' && entry.applied)
 	const decision =
-		authority !== undefined && authorityErrors.length === 0 && !limited && status !== 'unrated'
+		authority !== undefined && success && !limited && status !== 'unrated'
 			? decideEligibility(qualification.eligibility)
 			: undefined
 	return {
@@ -342,6 +404,13 @@ export function buildProgramResult(
  * @param subject - The original caller subject
  * @param aggregate - The subject's aggregate projection, when a batch supplies one
  * @returns The subject, or a private copy carrying the aggregate projection
+ *
+ * @example
+ * ```ts
+ * import { buildQualificationSubject } from '@orkestrel/program'
+ *
+ * buildQualificationSubject({ id: 'r1' }) // { id: 'r1' }
+ * ```
  */
 export function buildQualificationSubject(
 	subject: Subject,
@@ -378,9 +447,16 @@ export function buildQualificationSubject(
  *
  * @param definition - The program definition to check
  * @returns A fresh, deduped list of missing scope references
+ *
+ * @example
+ * ```ts
+ * import { findMissingScopes } from '@orkestrel/program'
+ *
+ * findMissingScopes(definition) // []
+ * ```
  */
 export function findMissingScopes(definition: ProgramDefinition): readonly string[] {
-	const ids = new Set(definition.rating.lines.map((line) => line.id))
+	const ids = new Set((definition.rating?.lines ?? []).map((line) => line.id))
 	const missing = new Set<string>()
 	for (const ruling of definition.qualification.rulings ?? []) {
 		if (ruling.scope !== undefined && !ids.has(ruling.scope)) missing.add(ruling.scope)
@@ -389,6 +465,55 @@ export function findMissingScopes(definition: ProgramDefinition): readonly strin
 		if (notice.scope !== undefined && !ids.has(notice.scope)) missing.add(notice.scope)
 	}
 	return [...missing]
+}
+
+/**
+ * Assert a program definition's always-on construction invariants — missing
+ * scope references and duplicate rating-line or notice ids.
+ *
+ * @remarks
+ * These checks run at construction regardless of `options.validate` (unlike
+ * {@link validateProgramDefinition}, the standalone report-shaped validator) —
+ * an authoring mistake this severe cannot silently compile.
+ *
+ * @param definition - The program definition to assert
+ * @throws {@link ProgramError} `'MISSING'` when a ruling or notice scope names
+ * no rating line
+ * @throws {@link ProgramError} `'DUPLICATE'` when two rating lines or two
+ * notices share an id
+ *
+ * @example
+ * ```ts
+ * import { assertProgramDefinition } from '@orkestrel/program'
+ *
+ * assertProgramDefinition(definition) // does not throw
+ * ```
+ */
+export function assertProgramDefinition(definition: ProgramDefinition): void {
+	const missing = findMissingScopes(definition)
+	if (missing.length > 0) {
+		throw new ProgramError(
+			'MISSING',
+			`Unknown rating line reference: ${missing.join(', ')}`,
+			definition.id,
+		)
+	}
+	const duplicateLines = findDuplicates(definition.rating?.lines ?? [])
+	if (duplicateLines.length > 0) {
+		throw new ProgramError(
+			'DUPLICATE',
+			`Duplicate rating line id: ${duplicateLines.join(', ')}`,
+			definition.id,
+		)
+	}
+	const duplicateNotices = findDuplicates(definition.notices ?? [])
+	if (duplicateNotices.length > 0) {
+		throw new ProgramError(
+			'DUPLICATE',
+			`Duplicate notice id: ${duplicateNotices.join(', ')}`,
+			definition.id,
+		)
+	}
 }
 
 /**
@@ -406,6 +531,13 @@ export function findMissingScopes(definition: ProgramDefinition): readonly strin
  * @param qualifier - The qualifier that validates the nested qualification
  * @param engine - The reason engine that validates authority and aggregate gates
  * @returns A structured validation result
+ *
+ * @example
+ * ```ts
+ * import { validateProgramDefinition } from '@orkestrel/program'
+ *
+ * validateProgramDefinition(definition, qualifier, engine) // { valid: true, ... }
+ * ```
  */
 export function validateProgramDefinition(
 	definition: ProgramDefinition,
@@ -422,16 +554,14 @@ export function validateProgramDefinition(
 	if (definition.id.length === 0) errors.push('Program id must not be empty')
 	if (definition.name.length === 0) errors.push('Program name must not be empty')
 
-	if (!isRatingDefinition(definition.rating)) {
-		errors.push('rating: definition has an invalid shape')
-	}
-
 	const qualification = qualifier.validate(definition.qualification)
 	errors.push(...qualification.errors.map((error) => `qualification: ${error}`))
 	warnings.push(...qualification.warnings.map((warning) => `qualification: ${warning}`))
 
-	const lines = new Set(definition.rating.lines.map((line) => line.id))
-	if (lines.size !== definition.rating.lines.length) errors.push('rating: duplicate line id')
+	const lines = new Set((definition.rating?.lines ?? []).map((line) => line.id))
+	if (definition.rating !== undefined && lines.size !== definition.rating.lines.length) {
+		errors.push('rating: duplicate line id')
+	}
 	for (const ruling of definition.qualification.rulings ?? []) {
 		if (ruling.scope !== undefined && !lines.has(ruling.scope)) {
 			errors.push(`Qualification ruling "${ruling.id}" references missing line "${ruling.scope}"`)
@@ -449,13 +579,9 @@ export function validateProgramDefinition(
 
 	const authority = definition.authority
 	if (authority !== undefined) {
-		if (authority.reasoning !== 'logical') {
-			errors.push('Authority must be a logical definition')
-		} else {
-			const validation = engine.validate(authority)
-			errors.push(...validation.errors.map((error) => `authority: ${error}`))
-			warnings.push(...validation.warnings.map((warning) => `authority: ${warning}`))
-		}
+		const validation = engine.validate(authority)
+		errors.push(...validation.errors.map((error) => `authority: ${error}`))
+		warnings.push(...validation.warnings.map((warning) => `authority: ${warning}`))
 	}
 
 	const aggregate = definition.aggregate
@@ -471,22 +597,79 @@ export function validateProgramDefinition(
 			errors.push('Aggregate partition field must be non-empty')
 		}
 		if (aggregate.gates !== undefined) {
-			if (aggregate.gates.reasoning !== 'logical') {
-				errors.push('Aggregate gates must be a logical definition')
-			} else {
-				const validation = engine.validate(aggregate.gates)
-				errors.push(...validation.errors.map((error) => `aggregate: ${error}`))
-				warnings.push(...validation.warnings.map((warning) => `aggregate: ${warning}`))
-			}
+			const validation = engine.validate(aggregate.gates)
+			errors.push(...validation.errors.map((error) => `aggregate: ${error}`))
+			warnings.push(...validation.warnings.map((warning) => `aggregate: ${warning}`))
 			if (aggregate.fields.length === 0) {
 				warnings.push('Aggregate gates are defined without aggregate fields')
 			}
 		}
 	}
 
-	if (definition.rating.lines.length === 0) warnings.push('Program rating has no lines')
+	if (definition.rating !== undefined && definition.rating.lines.length === 0) {
+		warnings.push('Program rating has no lines')
+	}
 
 	return { valid: errors.length === 0, errors, warnings }
+}
+
+/**
+ * Coerce a subject's partition-key field to its group-key string.
+ *
+ * @remarks
+ * The key is the resolved field coerced with `String` — `undefined` collapses
+ * to the empty string, so a subject missing the field and a subject whose
+ * field is literally `''` land in the SAME partition, and a numeric `1`
+ * collides with the string `'1'`.
+ *
+ * @param subject - The subject to key
+ * @param by - The partition key field
+ * @returns The subject's group key
+ *
+ * @example
+ * ```ts
+ * import { formatGroupKey } from '@orkestrel/program'
+ *
+ * formatGroupKey({ location: 'east' }, 'location') // 'east'
+ * ```
+ */
+export function formatGroupKey(subject: Subject, by: FieldPath): string {
+	return String(resolveField(subject, by) ?? '')
+}
+
+/**
+ * Fold one subject's finite aggregate field values into a sums record.
+ *
+ * @remarks
+ * Returns a FRESH record — `sums` is never mutated. Only finite numbers
+ * contribute; a non-numeric or absent value contributes zero (never a
+ * coercion). A {@link FieldPath} may be nested — `formatField` renders the
+ * dot-joined key the returned record is keyed by.
+ *
+ * @param sums - The sums record to fold into
+ * @param subject - The subject to fold in
+ * @param fields - The fields to sum
+ * @returns A fresh sums record with `subject`'s contribution added
+ *
+ * @example
+ * ```ts
+ * import { sumFields } from '@orkestrel/program'
+ *
+ * sumFields({ amount: 0 }, { amount: 5 }, ['amount']) // { amount: 5 }
+ * ```
+ */
+export function sumFields(
+	sums: Readonly<Record<string, number>>,
+	subject: Subject,
+	fields: readonly FieldPath[],
+): Readonly<Record<string, number>> {
+	const next: Record<string, number> = { ...sums }
+	for (const field of fields) {
+		const key = formatField(field)
+		const value = resolveField(subject, field)
+		if (isFiniteNumber(value)) next[key] = (next[key] ?? 0) + value
+	}
+	return next
 }
 
 /**
@@ -501,20 +684,20 @@ export function validateProgramDefinition(
  * @param subjects - The batch of subjects
  * @param fields - The fields to sum
  * @returns A fresh record of dot-joined field to summed finite value
+ *
+ * @example
+ * ```ts
+ * import { aggregateSums } from '@orkestrel/program'
+ *
+ * aggregateSums([{ amount: 5 }, { amount: 3 }], ['amount']) // { amount: 8 }
+ * ```
  */
 export function aggregateSums(
 	subjects: readonly Subject[],
 	fields: readonly FieldPath[],
 ): Readonly<Record<string, number>> {
-	const sums: Record<string, number> = {}
-	for (const field of fields) sums[formatField(field)] = 0
-	for (const subject of subjects) {
-		for (const field of fields) {
-			const key = formatField(field)
-			const value = resolveField(subject, field)
-			if (isFiniteNumber(value)) sums[key] = (sums[key] ?? 0) + value
-		}
-	}
+	let sums = emptySums(fields)
+	for (const subject of subjects) sums = sumFields(sums, subject, fields)
 	return sums
 }
 
@@ -522,16 +705,20 @@ export function aggregateSums(
  * Partition a batch of subjects by a field, summing aggregate fields per key.
  *
  * @remarks
- * The partition key is the resolved `by` field coerced with `String` —
- * `undefined` collapses to the empty string, so a subject missing the field and
- * a subject whose field is literally `''` land in the SAME partition, and a
- * numeric `1` collides with the string `'1'`. Group order follows first
- * appearance in the subject array.
+ * The partition key is derived by {@link formatGroupKey}. Group order follows
+ * first appearance in the subject array.
  *
  * @param subjects - The batch of subjects
  * @param fields - The fields to sum within each partition
  * @param by - The partition key field; no partition is built when absent
  * @returns A fresh list of aggregate groups, or an empty list when `by` is absent
+ *
+ * @example
+ * ```ts
+ * import { aggregateGroups } from '@orkestrel/program'
+ *
+ * aggregateGroups([{ location: 'east', amount: 5 }], ['amount'], 'location')
+ * ```
  */
 export function aggregateGroups(
 	subjects: readonly Subject[],
@@ -541,7 +728,7 @@ export function aggregateGroups(
 	if (by === undefined) return []
 	const records = new Map<string, Subject[]>()
 	for (const subject of subjects) {
-		const key = String(resolveField(subject, by) ?? '')
+		const key = formatGroupKey(subject, by)
 		const group = records.get(key)
 		if (group === undefined) records.set(key, [subject])
 		else group.push(subject)
@@ -558,8 +745,8 @@ export function aggregateGroups(
  *
  * @remarks
  * The projection carries the whole-batch `count` and `sums` plus the subject's
- * OWN partition, located by the same `String`-coerced key {@link aggregateGroups}
- * partitions under.
+ * OWN partition, located by the same {@link formatGroupKey} key
+ * {@link aggregateGroups} partitions under.
  *
  * @param subject - The subject to project for
  * @param count - The whole-batch subject count
@@ -567,6 +754,13 @@ export function aggregateGroups(
  * @param groups - The batch partitions
  * @param by - The partition key field; no group is attached when absent
  * @returns A fresh aggregate projection
+ *
+ * @example
+ * ```ts
+ * import { buildAggregateProjection } from '@orkestrel/program'
+ *
+ * buildAggregateProjection(subject, 2, { amount: 8 }, groups, 'location')
+ * ```
  */
 export function buildAggregateProjection(
 	subject: Subject,
@@ -576,9 +770,7 @@ export function buildAggregateProjection(
 	by?: FieldPath,
 ): AggregateProjection {
 	const group =
-		by === undefined
-			? undefined
-			: groups.find((entry) => entry.key === String(resolveField(subject, by) ?? ''))
+		by === undefined ? undefined : groups.find((entry) => entry.key === formatGroupKey(subject, by))
 	return { count, sums: { ...sums }, ...(group === undefined ? {} : { group }) }
 }
 
@@ -594,6 +786,13 @@ export function buildAggregateProjection(
  * @param sums - The whole-batch summed aggregate fields
  * @param groups - The batch partitions
  * @returns A fresh record carrying the batch aggregate under {@link AGGREGATE_KEY}
+ *
+ * @example
+ * ```ts
+ * import { buildAggregateRecord } from '@orkestrel/program'
+ *
+ * buildAggregateRecord(2, { amount: 8 }, [])
+ * ```
  */
 export function buildAggregateRecord(
 	count: number,
@@ -608,6 +807,13 @@ export function buildAggregateRecord(
  *
  * @param fields - The fields to zero
  * @returns A fresh record of dot-joined field to `0`
+ *
+ * @example
+ * ```ts
+ * import { emptySums } from '@orkestrel/program'
+ *
+ * emptySums(['amount']) // { amount: 0 }
+ * ```
  */
 export function emptySums(fields: readonly FieldPath[]): Readonly<Record<string, number>> {
 	const sums: Record<string, number> = {}
@@ -621,6 +827,13 @@ export function emptySums(fields: readonly FieldPath[]): Readonly<Record<string,
  *
  * @param entries - The partial tally entries to complete
  * @returns A record with all five statuses present
+ *
+ * @example
+ * ```ts
+ * import { completeTallies } from '@orkestrel/program'
+ *
+ * completeTallies({ eligible: { count: 1, sums: {} } })
+ * ```
  */
 export function completeTallies(
 	entries: Partial<Record<Status, Tally>>,
@@ -639,6 +852,13 @@ export function completeTallies(
  *
  * @param fields - The fields each tally's sums are zeroed for
  * @returns A fresh, complete tally record
+ *
+ * @example
+ * ```ts
+ * import { emptyTallies } from '@orkestrel/program'
+ *
+ * emptyTallies(['amount'])
+ * ```
  */
 export function emptyTallies(fields: readonly FieldPath[]): Readonly<Record<Status, Tally>> {
 	const entries: Partial<Record<Status, Tally>> = {}
@@ -654,6 +874,13 @@ export function emptyTallies(fields: readonly FieldPath[]): Readonly<Record<Stat
  * @param subject - The subject to fold in
  * @param fields - The fields to sum
  * @returns A fresh, complete tally record with the subject folded in
+ *
+ * @example
+ * ```ts
+ * import { tallyProgram } from '@orkestrel/program'
+ *
+ * tallyProgram(tallies, result, { id: 'r1', amount: 5 }, ['amount'])
+ * ```
  */
 export function tallyProgram(
 	tallies: Readonly<Record<Status, Tally>>,
@@ -663,12 +890,7 @@ export function tallyProgram(
 ): Readonly<Record<Status, Tally>> {
 	const status = result.status
 	const current = tallies[status]
-	const sums: Record<string, number> = { ...current.sums }
-	for (const field of fields) {
-		const key = formatField(field)
-		const value = resolveField(subject, field)
-		if (isFiniteNumber(value)) sums[key] = (sums[key] ?? 0) + value
-	}
+	const sums = sumFields(current.sums, subject, fields)
 	return completeTallies({ ...tallies, [status]: { count: current.count + 1, sums } })
 }
 
@@ -677,11 +899,12 @@ export function tallyProgram(
  * parts.
  *
  * @remarks
- * `count` is the subject count, `success` requires every subject execution to
- * succeed, and `trace` / `errors` accumulate every subject's. A fired aggregate
- * gate contributes a `limit` determination, never a technical failure (a
- * non-logical gate result is a caller-facing `MISMATCH` thrown by `Program`
- * before this assembles).
+ * `count` is the subject count, `trace` / `errors` accumulate every subject's
+ * plus the batch aggregate-gate evaluation's (`options.gates`), and `success`
+ * requires every subject execution to succeed AND the gate evaluation to have
+ * produced no errors. A fired aggregate gate contributes a `limit`
+ * determination, never a technical failure (a non-logical gate result is a
+ * caller-facing `MISMATCH` thrown by `Program` before this assembles).
  *
  * @param definition - The authored program definition
  * @param subjects - The per-subject program results, in input order
@@ -689,7 +912,15 @@ export function tallyProgram(
  * @param groups - The batch partitions
  * @param tallies - The completed status tallies
  * @param sums - The whole-batch summed aggregate fields
+ * @param options - Optional resolved aggregate-gate result
  * @returns A fresh aggregate result
+ *
+ * @example
+ * ```ts
+ * import { buildAggregateResult } from '@orkestrel/program'
+ *
+ * buildAggregateResult(definition, subjects, [], [], tallies, { amount: 8 })
+ * ```
  */
 export function buildAggregateResult(
 	definition: ProgramDefinition,
@@ -698,7 +929,11 @@ export function buildAggregateResult(
 	groups: readonly AggregateGroup[],
 	tallies: Readonly<Record<Status, Tally>>,
 	sums: Readonly<Record<string, number>>,
+	options?: { readonly gates?: LogicalResult },
 ): AggregateResult {
+	const gates = options?.gates
+	const gateTrace = gates === undefined ? [] : [...gates.trace]
+	const gateErrors = gates === undefined ? [] : [...gates.errors]
 	return {
 		id: definition.id,
 		name: definition.name,
@@ -708,8 +943,8 @@ export function buildAggregateResult(
 		tallies,
 		count: subjects.length,
 		sums,
-		success: subjects.every((entry) => entry.success),
-		trace: subjects.flatMap((entry) => entry.trace),
-		errors: subjects.flatMap((entry) => entry.errors),
+		success: subjects.every((entry) => entry.success) && gateErrors.length === 0,
+		trace: [...subjects.flatMap((entry) => entry.trace), ...gateTrace],
+		errors: [...subjects.flatMap((entry) => entry.errors), ...gateErrors],
 	}
 }

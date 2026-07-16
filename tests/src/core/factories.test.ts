@@ -9,8 +9,14 @@ import {
 } from '@src/core'
 import { isProgramError } from '@src/core'
 import { rulingDefinition, qualificationDefinition } from '@orkestrel/qualifier'
+import { lineDefinition, ratingDefinition } from '@orkestrel/rater'
 import { logicalDefinition, rule, atom } from '@orkestrel/reason'
-import { standardProgramDefinition, standardQualification, standardRating } from '../../setup.js'
+import {
+	baseLine,
+	standardProgramDefinition,
+	standardQualification,
+	standardRating,
+} from '../../setup.js'
 
 describe('factories', () => {
 	describe('noticeDefinition', () => {
@@ -107,6 +113,44 @@ describe('factories', () => {
 			expect(program.id).toBe('standard')
 			expect(program.name).toBe('Standard program')
 			program.destroy()
+		})
+
+		it('throws DUPLICATE for duplicate rating-line ids regardless of validate', () => {
+			const definition = programDefinition(
+				'dup-line',
+				'Dup line',
+				qualificationDefinition('dup-line-qualification', 'Dup line qualification', []),
+				ratingDefinition('dup-line-rating', 'Dup line rating', [
+					lineDefinition('base', 'Base', baseLine.rate),
+					lineDefinition('base', 'Base again', baseLine.rate),
+				]),
+			)
+			let error: unknown
+			try {
+				createProgram(definition, { validate: false })
+				expect.unreachable('expected DUPLICATE')
+			} catch (caught) {
+				error = caught
+			}
+			expect(error).toMatchObject({ code: 'DUPLICATE' })
+		})
+
+		it('throws DUPLICATE for duplicate notice ids regardless of validate', () => {
+			const definition = programDefinition(
+				'dup-notice',
+				'Dup notice',
+				qualificationDefinition('dup-notice-qualification', 'Dup notice qualification', []),
+				undefined,
+				{ notices: [noticeDefinition('n', 'First'), noticeDefinition('n', 'Second')] },
+			)
+			let error: unknown
+			try {
+				createProgram(definition, { validate: false })
+				expect.unreachable('expected DUPLICATE')
+			} catch (caught) {
+				error = caught
+			}
+			expect(error).toMatchObject({ code: 'DUPLICATE' })
 		})
 	})
 

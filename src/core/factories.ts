@@ -80,7 +80,7 @@ export function createProgramManager(options?: ProgramManagerOptions): ProgramMa
  * @param id - The program id
  * @param name - The display name
  * @param qualification - The nested qualification definition
- * @param rating - The nested rating definition
+ * @param rating - The nested rating definition; omit for an eligibility-only program
  * @param input - Optional description, notices, authority, aggregate, and metadata
  * @returns A fresh program definition
  *
@@ -95,14 +95,14 @@ export function programDefinition(
 	id: string,
 	name: string,
 	qualification: QualificationDefinition,
-	rating: RatingDefinition,
+	rating?: RatingDefinition,
 	input?: ProgramInput,
 ): ProgramDefinition {
 	return {
 		id,
 		name,
 		qualification,
-		rating,
+		...(rating === undefined ? {} : { rating }),
 		...(input?.description === undefined ? {} : { description: input.description }),
 		...(input?.notices === undefined ? {} : { notices: [...input.notices] }),
 		...(input?.authority === undefined ? {} : { authority: input.authority }),

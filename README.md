@@ -3,8 +3,8 @@
 A **program composition layer** over
 [`@orkestrel/qualifier`](https://github.com/orkestrel/qualifier) and
 [`@orkestrel/rater`](https://github.com/orkestrel/rater): a pure,
-JSON-serializable `ProgramDefinition` composes one qualification with one rating,
-plus optional notices, authority, and batch aggregate policy. `Program` executes
+JSON-serializable `ProgramDefinition` composes one qualification with an optional
+rating, plus optional notices, authority, and batch aggregate policy. `Program` executes
 the workflow in one direction — qualify the subject, stop on terminal
 qualification, select eligible rating lines, rate only those lines, derive status,
 then evaluate optional authority — returning a nested `ProgramResult` (or
