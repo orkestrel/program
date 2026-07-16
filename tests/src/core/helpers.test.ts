@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { isRecord } from '@orkestrel/contract'
 import {
 	AGGREGATE_KEY,
 	OUTCOME_KEY,
@@ -885,11 +886,12 @@ describe('helpers', () => {
 
 	describe('hostile subjects', () => {
 		it('buildQualificationSubject copies an own __proto__/constructor-carrying subject safely', () => {
-			const hostile = JSON.parse('{"id":"h","__proto__":{"x":1}}') as Record<string, unknown>
+			const hostile: Record<string, unknown> = JSON.parse('{"id":"h","__proto__":{"x":1}}')
 			const qualified = buildQualificationSubject(hostile, { count: 1, sums: {} })
 			expect(Object.hasOwn(qualified, AGGREGATE_KEY)).toBe(true)
 			expect(Object.getPrototypeOf(qualified)).toBe(Object.prototype)
-			expect(({} as Record<string, unknown>).x).toBeUndefined()
+			const fresh: Record<string, unknown> = {}
+			expect(fresh.x).toBeUndefined()
 		})
 
 		it('aggregateGroups and formatGroupKey key an own-__proto__ subject as an ordinary record', () => {
@@ -987,9 +989,7 @@ describe('helpers', () => {
 			)
 			const projection = buildOutcomeProjection(preliminary)
 			const scopes = projection.scopes
-			if (typeof scopes === 'object' && scopes !== null && !Array.isArray(scopes)) {
-				;(scopes as Record<string, unknown>).base = 'ineligible'
-			}
+			if (isRecord(scopes)) scopes.base = 'ineligible'
 			expect(preliminary.qualification.scopes.base).toBe('eligible')
 		})
 	})

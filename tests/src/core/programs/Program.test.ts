@@ -642,7 +642,8 @@ describe('Program', () => {
 			const program = createProgram(standardProgramDefinition)
 			const result = program.execute(hostile)
 			expect(result.status).toBe('eligible')
-			expect(({} as Record<string, unknown>).polluted).toBeUndefined()
+			const fresh: Record<string, unknown> = {}
+			expect(fresh.polluted).toBeUndefined()
 			expect(Object.getPrototypeOf({})).toBe(Object.prototype)
 			program.destroy()
 		})
