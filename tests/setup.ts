@@ -1,5 +1,12 @@
 import type { LineDefinition, RaterInterface, RaterOptions } from '@orkestrel/rater'
-import type { Definition, LogicalDefinition, ReasonInterface, ReasonOptions, ReasonResult, Subject } from '@orkestrel/reason'
+import type {
+	Definition,
+	LogicalDefinition,
+	ReasonInterface,
+	ReasonOptions,
+	ReasonResult,
+	Subject,
+} from '@orkestrel/reason'
 import type { ProgramDefinition, ProgramEventMap, ProgramInterface } from '@src/core'
 import { createRater, isRatingDefinition } from '@orkestrel/rater'
 import { qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
@@ -102,7 +109,10 @@ export function createRecordingEngine(options?: ReasonOptions): RecordingEngineI
 
 	function reason(subjects: readonly Subject[], definition: Definition): readonly ReasonResult[]
 	function reason(subject: Subject, definition: Definition): ReasonResult
-	function reason(subjectsOrSubject: readonly Subject[] | Subject, definition: Definition): readonly ReasonResult[] | ReasonResult {
+	function reason(
+		subjectsOrSubject: readonly Subject[] | Subject,
+		definition: Definition,
+	): readonly ReasonResult[] | ReasonResult {
 		if (isSubjectArray(subjectsOrSubject)) {
 			return inner.reason(subjectsOrSubject, definition)
 		}
@@ -262,14 +272,7 @@ const coastalGates = logicalDefinition('coastal-gates', 'Coastal gates', [
 export const coastalReferralSubject: Subject = { id: 'risk-coastal', location: 'coastal' }
 
 const failingPass = quantitativeDefinition('failing-pass', 'Failing pass', [
-	factorGroup(
-		'g',
-		'sum',
-		[
-			fieldFactor('req', ['missing'], { required: true }),
-		],
-		{ strict: true },
-	),
+	factorGroup('g', 'sum', [fieldFactor('req', ['missing'], { required: true })], { strict: true }),
 ])
 
 export const failedQualificationProgramDefinition = programDefinition(
