@@ -84,9 +84,9 @@ describe('helpers', () => {
 			const original = { tier: 'gold', nested: { count: 1, tags: ['a'] } }
 			const copy = copyJSONValue(original)
 			expect(copy).toEqual(original)
-			if (typeof copy === 'object' && copy !== null && !Array.isArray(copy)) {
+			if (isRecord(copy)) {
 				const nested = copy.nested
-				if (typeof nested === 'object' && nested !== null && !Array.isArray(nested)) {
+				if (isRecord(nested)) {
 					nested.count = 99
 				}
 			}
@@ -96,6 +96,9 @@ describe('helpers', () => {
 		it('preserves an own __proto__ key without touching the clone prototype', () => {
 			const original = JSON.parse('{"__proto__": {"x": 1}}')
 			const copy = copyJSONValue(original)
+			if (!isRecord(copy)) {
+				throw new Error('expected a record clone')
+			}
 			expect(Object.getPrototypeOf(copy)).toBe(Object.prototype)
 			expect(Object.hasOwn(copy, '__proto__')).toBe(true)
 			const descriptor = Object.getOwnPropertyDescriptor(copy, '__proto__')
@@ -420,7 +423,7 @@ describe('helpers', () => {
 				standardProgramDefinition.rating,
 				{ notices: [noticeDefinition('n', 'N', { scope: 'missing' })] },
 			)
-			expect(findMissingScopes(definition).sort()).toEqual(['ghost', 'missing'].sort())
+			expect([...findMissingScopes(definition)].sort()).toEqual(['ghost', 'missing'].sort())
 		})
 	})
 

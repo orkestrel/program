@@ -193,7 +193,8 @@ describe('Program', () => {
 			const program = createProgram(standardProgramDefinition)
 			let error: unknown
 			try {
-				program.execute('subject')
+				const subject: Subject = JSON.parse('"subject"')
+				program.execute(subject)
 				expect.unreachable('expected MISMATCH')
 			} catch (caught) {
 				error = caught

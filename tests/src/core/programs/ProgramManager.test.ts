@@ -28,7 +28,7 @@ describe('ProgramManager', () => {
 			expect(manager.has('first')).toBe(true)
 			expect(manager.program('missing')).toBeUndefined()
 			expect(manager.program('first')?.execute(eligibleSubject).status).toBe('eligible')
-			const programs = manager.programs()
+			const programs = [...manager.programs()]
 			expect(programs.map((program) => program.id)).toEqual(['first', 'second'])
 			programs.pop()
 			expect(manager.size).toBe(2)
@@ -186,7 +186,7 @@ describe('ProgramManager', () => {
 			const manager = createProgramManager({ programs: definitions })
 			expect(manager.size).toBe(250)
 			expect(manager.program('program-149')?.id).toBe('program-149')
-			const listed = manager.programs()
+			const listed = [...manager.programs()]
 			expect(listed[0]?.id).toBe('program-0')
 			expect(listed[249]?.id).toBe('program-249')
 			listed.length = 0

@@ -1,7 +1,7 @@
 import type { LineDefinition, RaterInterface, RaterOptions } from '@orkestrel/rater'
-import type { LogicalDefinition, ReasonInterface, ReasonOptions, Subject } from '@orkestrel/reason'
+import type { Definition, LogicalDefinition, ReasonInterface, ReasonOptions, ReasonResult, Subject } from '@orkestrel/reason'
 import type { ProgramDefinition, ProgramEventMap, ProgramInterface } from '@src/core'
-import { createRater } from '@orkestrel/rater'
+import { createRater, isRatingDefinition } from '@orkestrel/rater'
 import { qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
 import { lineDefinition, ratingDefinition } from '@orkestrel/rater'
 import {
@@ -9,8 +9,8 @@ import {
 	createLogicalReasoner,
 	createQuantitativeReasoner,
 	createReason,
-	fieldSource,
 	factorGroup,
+	fieldFactor,
 	logicalDefinition,
 	quantitativeDefinition,
 	rule,
@@ -71,14 +71,21 @@ export function createRecordingRater(options?: RaterOptions): RecordingRaterInte
 			calls.length = 0
 		},
 		rate(linesOrDefinition, subject) {
-			const lines = Array.isArray(linesOrDefinition) ? linesOrDefinition : linesOrDefinition.lines
-			calls.push({ lines, subject })
+			if (isRatingDefinition(linesOrDefinition)) {
+				calls.push({ lines: linesOrDefinition.lines, subject })
+				return inner.rate(linesOrDefinition, subject)
+			}
+			calls.push({ lines: linesOrDefinition, subject })
 			return inner.rate(linesOrDefinition, subject)
 		},
 		destroy() {
 			inner.destroy()
 		},
 	}
+}
+
+export function isSubjectArray(value: unknown): value is readonly Subject[] {
+	return Array.isArray(value)
 }
 
 export interface RecordingEngineInterface extends ReasonInterface {
@@ -92,16 +99,21 @@ export function createRecordingEngine(options?: ReasonOptions): RecordingEngineI
 		...options,
 	})
 	let destroyCount = 0
+
+	function reason(subjects: readonly Subject[], definition: Definition): readonly ReasonResult[]
+	function reason(subject: Subject, definition: Definition): ReasonResult
+	function reason(subjectsOrSubject: readonly Subject[] | Subject, definition: Definition): readonly ReasonResult[] | ReasonResult {
+		if (isSubjectArray(subjectsOrSubject)) {
+			return inner.reason(subjectsOrSubject, definition)
+		}
+		return inner.reason(subjectsOrSubject, definition)
+	}
+
 	return {
 		get emitter() {
 			return inner.emitter
 		},
-		reason(subjectsOrSubject, definition) {
-			if (Array.isArray(subjectsOrSubject)) {
-				return inner.reason(subjectsOrSubject, definition)
-			}
-			return inner.reason(subjectsOrSubject, definition)
-		},
+		reason,
 		register(reasoner) {
 			inner.register(reasoner)
 		},
@@ -254,10 +266,7 @@ const failingPass = quantitativeDefinition('failing-pass', 'Failing pass', [
 		'g',
 		'sum',
 		[
-			staticFactor('req', 0, {
-				required: true,
-				source: fieldSource(['missing']),
-			}),
+			fieldFactor('req', ['missing'], { required: true }),
 		],
 		{ strict: true },
 	),

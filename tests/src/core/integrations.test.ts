@@ -35,14 +35,18 @@ describe('integrations', () => {
 			referralRater.destroy()
 
 			const scopedRater = createRecordingRater()
-			const windLine = scopedProgramDefinition.rating.lines[0]
+			const rating = scopedProgramDefinition.rating
+			if (rating === undefined) {
+				throw new Error('scopedProgramDefinition must define a rating')
+			}
+			const windLine = rating.lines[0]
 			if (windLine === undefined) {
 				throw new Error('scopedProgramDefinition must define at least one rating line')
 			}
 			const windOnly = {
 				...scopedProgramDefinition,
 				rating: {
-					...scopedProgramDefinition.rating,
+					...rating,
 					lines: [windLine],
 				},
 			}
@@ -100,7 +104,11 @@ describe('integrations', () => {
 			expect(
 				qualifier.qualify(eligibleSubject, standardProgramDefinition.qualification).success,
 			).toBe(true)
-			expect(rater.rate(standardProgramDefinition.rating.lines, eligibleSubject).success).toBe(true)
+			const { rating } = standardProgramDefinition
+			if (rating === undefined) {
+				throw new Error('standardProgramDefinition must define a rating')
+			}
+			expect(rater.rate(rating.lines, eligibleSubject).success).toBe(true)
 			qualifier.destroy()
 			rater.destroy()
 			engine.destroy()
