@@ -87,7 +87,7 @@ describe('helpers', () => {
 			if (isRecord(copy)) {
 				const nested = copy.nested
 				if (isRecord(nested)) {
-					nested.count = 99
+					Object.assign(nested, { count: 99 })
 				}
 			}
 			expect(original.nested.count).toBe(1)
