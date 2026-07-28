@@ -619,3 +619,9 @@ export function buildHostileSubject(): Subject {
 		'{"id":"hostile","licensed":true,"__proto__":{"polluted":true},"constructor":{"polluted":true}}',
 	)
 }
+
+/** Whether a repository-relative Vue SFC path belongs to the private browser application. */
+export function isBrowserVuePath(path: string): boolean {
+	const normalized = path.replaceAll('\\', '/')
+	return normalized.startsWith('app/browser/')
+}

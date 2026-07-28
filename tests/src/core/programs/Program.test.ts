@@ -218,7 +218,11 @@ describe('Program', () => {
 			const withPass = programDefinition(
 				'missing',
 				'Missing',
-				qualificationDefinition('q', 'Q', [gates], { rulings: definition.qualification.rulings }),
+				qualificationDefinition('q', 'Q', [gates], {
+					...(definition.qualification.rulings === undefined
+						? {}
+						: { rulings: definition.qualification.rulings }),
+				}),
 				standardRating,
 			)
 			let error: unknown
@@ -354,7 +358,7 @@ describe('Program', () => {
 					definition.qualification,
 					definition.rating,
 					{
-						authority: definition.authority,
+						...(definition.authority === undefined ? {} : { authority: definition.authority }),
 						notices: [noticeDefinition('audit', 'Audit {{id}}')],
 					},
 				),

@@ -86,7 +86,10 @@ export class Program implements ProgramInterface {
 		this.id = definition.id
 		this.name = definition.name
 		this.definition = definition
-		this.#emitter = new Emitter({ on: options?.on, error: options?.error })
+		this.#emitter = new Emitter({
+			...(options?.on === undefined ? {} : { on: options.on }),
+			...(options?.error === undefined ? {} : { error: options.error }),
+		})
 		this.#evaluator = createEvaluator()
 		this.#engineOwned = options?.engine === undefined
 		this.#qualifierOwned = options?.qualifier === undefined

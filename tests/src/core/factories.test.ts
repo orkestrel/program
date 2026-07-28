@@ -95,7 +95,7 @@ describe('factories', () => {
 				rule('always', [atom('id', 'equals', 'x')], atom('blocked', 'equals', true)),
 			])
 			const withPass = qualificationDefinition('missing-qualification', 'Missing', [gates], {
-				rulings: qualification.rulings,
+				...(qualification.rulings === undefined ? {} : { rulings: qualification.rulings }),
 			})
 			const definition = programDefinition('missing', 'Missing', withPass, standardRating)
 			let error: unknown

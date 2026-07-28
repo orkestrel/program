@@ -48,7 +48,10 @@ export class ProgramManager implements ProgramManagerInterface {
 	#destroyed = false
 
 	constructor(options?: ProgramManagerOptions) {
-		this.#emitter = new Emitter({ on: options?.on, error: options?.error })
+		this.#emitter = new Emitter({
+			...(options?.on === undefined ? {} : { on: options.on }),
+			...(options?.error === undefined ? {} : { error: options.error }),
+		})
 		this.#labels = options?.labels
 		this.#engineOwned = options?.engine === undefined
 		this.#qualifierOwned = options?.qualifier === undefined
@@ -109,7 +112,7 @@ export class ProgramManager implements ProgramManagerInterface {
 			rater: this.#rater,
 			engine: this.#engine,
 			validate: this.#validate,
-			labels: this.#labels,
+			...(this.#labels === undefined ? {} : { labels: this.#labels }),
 		})
 		this.#programs.push(program)
 		this.#emitter.emit('add', program.id)
