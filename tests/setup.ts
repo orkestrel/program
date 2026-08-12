@@ -150,12 +150,12 @@ export function createRecordingEngine(options?: ReasonOptions): RecordingEngineI
 }
 
 export interface EventRecorderInterface {
-	readonly names: readonly (keyof ProgramEventMap)[]
+	readonly names: ReadonlyArray<keyof ProgramEventMap>
 	clear(): void
 }
 
 export function recordEvents(program: ProgramInterface): EventRecorderInterface {
-	const names: (keyof ProgramEventMap)[] = []
+	const names: Array<keyof ProgramEventMap> = []
 	const record = (name: keyof ProgramEventMap) => {
 		names.push(name)
 	}

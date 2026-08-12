@@ -26,7 +26,7 @@
 > `Program` either receives injected qualifier, rater, and engine instances (never
 > destroyed by `Program`) or creates and OWNS one shared quantitative-plus-logical
 > engine (`bail: false`), destroyed in `destroy()`. Every `execute` call fires through
-> `Program`'s typed `emitter` (AGENTS §13). Source: [`src/core`](../../src/core).
+> `Program`'s typed `emitter` (AGENTS §13). Source: [`src/core`](../src/core).
 > Surfaced through the `@src/core` barrel.
 
 ## Surface
