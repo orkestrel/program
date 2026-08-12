@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { FieldPath } from '@orkestrel/contract'
 import { isRecord } from '@orkestrel/contract'
 import {
 	AGGREGATE_KEY,
@@ -1027,6 +1028,50 @@ describe('helpers', () => {
 			expect(deriveStatus(conditionalProgramDefinition, qualification, rating)).toBe('conditional')
 			qualifier.destroy()
 			rater.destroy()
+		})
+	})
+
+	describe('noticeDefinition', () => {
+		it('omits absent optional scope', () => {
+			const notice = noticeDefinition('audit', 'Audit')
+			expect(notice).toEqual({ id: 'audit', message: 'Audit' })
+			expect(Object.hasOwn(notice, 'scope')).toBe(false)
+		})
+
+		it('includes scope when provided', () => {
+			expect(noticeDefinition('audit', 'Audit', { scope: 'base' }).scope).toBe('base')
+		})
+	})
+
+	describe('aggregateDefinition', () => {
+		it('copies fields and omits absent optional keys', () => {
+			const fields: readonly FieldPath[] = ['amount']
+			const aggregate = aggregateDefinition(fields)
+			expect(aggregate.fields).toEqual(['amount'])
+			expect(aggregate.fields).not.toBe(fields)
+			expect(Object.hasOwn(aggregate, 'by')).toBe(false)
+			expect(Object.hasOwn(aggregate, 'gates')).toBe(false)
+		})
+	})
+
+	describe('programDefinition', () => {
+		it('copies collections and metadata independently', () => {
+			const notices = [noticeDefinition('audit', 'Audit')]
+			const metadata = { tier: 'gold', nested: { value: 1 } }
+			const definition = programDefinition('copy', 'Copy', standardQualification, standardRating, {
+				notices,
+				metadata,
+			})
+			notices.push(noticeDefinition('extra', 'Extra'))
+			if (
+				typeof metadata.nested === 'object' &&
+				metadata.nested !== null &&
+				!Array.isArray(metadata.nested)
+			) {
+				metadata.nested.value = 99
+			}
+			expect(definition.notices).toHaveLength(1)
+			expect(definition.metadata).toEqual({ tier: 'gold', nested: { value: 1 } })
 		})
 	})
 })

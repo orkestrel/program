@@ -17,7 +17,7 @@ import {
 	standardProgramDefinition,
 } from '../../setup.js'
 
-describe('integrations', () => {
+describe('integration', () => {
 	describe('no-rate proof', () => {
 		it('never calls the rater for terminal or fully scoped-out subjects', () => {
 			const ineligibleRater = createRecordingRater()

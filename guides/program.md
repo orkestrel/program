@@ -271,6 +271,9 @@ never destroyed — it holds no state to tear down) purely to drive that reuse.
 | `completeTallies`           | function | Fill missing statuses in a partial tally record.                                                                                                |
 | `tallyProgram`              | function | Add one subject and its fields to the result-status tally.                                                                                      |
 | `buildAggregateResult`      | function | Assemble one batch result, folding an optional aggregate-gate evaluation's `trace`/`errors` in and requiring it error-free for `success`.       |
+| `programDefinition`         | function | Build a fresh `ProgramDefinition`, copying every collection and omitting absent optional keys.                                                  |
+| `noticeDefinition`          | function | Build a fresh `Notice`, omitting an absent scope.                                                                                               |
+| `aggregateDefinition`       | function | Build a fresh `AggregateDefinition`, copying the fields and omitting absent optional keys.                                                      |
 
 The per-subject orchestration leaves guard the subject, select surviving lines, and
 map eligibility to a decision:
@@ -318,27 +321,11 @@ emptySums(['total']) // { total: 0 }
 copyJSONValue({ tier: 'gold', flags: [1, 2] }) // a fresh clone that shares no reference with the input
 ```
 
-### Factories
-
-| API                    | Kind     | Builds…                                |
-| ---------------------- | -------- | -------------------------------------- |
-| `createProgram`        | function | One compiled `ProgramInterface`.       |
-| `createProgramManager` | function | One ordered `ProgramManagerInterface`. |
-| `programDefinition`    | function | A fresh `ProgramDefinition`.           |
-| `noticeDefinition`     | function | A fresh `Notice`.                      |
-| `aggregateDefinition`  | function | A fresh `AggregateDefinition`.         |
-
-Every factory returns a fresh value, copies collections, and omits absent optional
-keys entirely.
+The definition leaves build the authored program values. Each returns a fresh value,
+copies collections, and omits absent optional keys entirely:
 
 ```ts
-import {
-	aggregateDefinition,
-	createProgram,
-	createProgramManager,
-	noticeDefinition,
-	programDefinition,
-} from '@orkestrel/program'
+import { aggregateDefinition, noticeDefinition, programDefinition } from '@orkestrel/program'
 
 const aggregate = aggregateDefinition(['amount'], { by: 'location' })
 const notice = noticeDefinition('audit', 'Program {{program}} executed')
@@ -347,6 +334,22 @@ const definition = programDefinition('standard', 'Standard', qualification, rati
 	notices: [notice],
 	aggregate,
 })
+```
+
+### Factories
+
+| API                    | Kind     | Builds…                                |
+| ---------------------- | -------- | -------------------------------------- |
+| `createProgram`        | function | One compiled `ProgramInterface`.       |
+| `createProgramManager` | function | One ordered `ProgramManagerInterface`. |
+
+The factories compile entities. The authored definitions they compile are plain
+values, so their builders are helper leaves rather than factories.
+
+```ts
+import { createProgram, createProgramManager, programDefinition } from '@orkestrel/program'
+
+const definition = programDefinition('standard', 'Standard', qualification, rating)
 
 const program = createProgram(definition)
 const manager = createProgramManager({ programs: [definition] })
@@ -918,8 +921,8 @@ const program = createProgram(definition, {
 Tests mirror the source structure under `tests/src/core` —
 `validators.test.ts`, `helpers.test.ts`, and `factories.test.ts` for the centralized
 surfaces, `programs/Program.test.ts` and `programs/ProgramManager.test.ts` for the
-entities, and `integrations.test.ts` for cross-entity composition — and use real
-qualifier, rater, and reason instances rather than mocks.
+entities, and the reserved `integration.test.ts` for cross-entity composition — and
+use real qualifier, rater, and reason instances rather than mocks.
 
 ### Program cases
 
@@ -979,7 +982,7 @@ standalone program destroys its own engine exactly once and idempotently.
 
 ### Public parity
 
-`tests/src/core/integrations.test.ts` asserts the barrel exports only program
+`tests/src/core/integration.test.ts` asserts the barrel exports only program
 concerns — it must not re-export quantitative reason or rating implementation
 symbols such as `QuantitativeReasoner`, `Factor`, `WorksheetFactor`, or `Rater`. It
 consumes `RaterInterface` without claiming ownership of `Rater`.

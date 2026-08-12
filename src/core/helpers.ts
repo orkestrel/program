@@ -1,6 +1,11 @@
 import type { FieldPath, JSONValue } from '@orkestrel/contract'
-import type { Eligibility, QualificationResult, QualifierInterface } from '@orkestrel/qualifier'
-import type { LineDefinition, RatingResult } from '@orkestrel/rater'
+import type {
+	Eligibility,
+	QualificationDefinition,
+	QualificationResult,
+	QualifierInterface,
+} from '@orkestrel/qualifier'
+import type { LineDefinition, RatingDefinition, RatingResult } from '@orkestrel/rater'
 import type {
 	EvaluatorInterface,
 	LogicalDefinition,
@@ -9,13 +14,17 @@ import type {
 	Subject,
 } from '@orkestrel/reason'
 import type {
+	AggregateDefinition,
 	AggregateGroup,
+	AggregateInput,
 	AggregateProjection,
 	AggregateResult,
 	Decision,
 	Determination,
 	Notice,
+	NoticeInput,
 	ProgramDefinition,
+	ProgramInput,
 	ProgramResult,
 	ProgramValidationResult,
 	Status,
@@ -946,5 +955,94 @@ export function buildAggregateResult(
 		success: subjects.every((entry) => entry.success) && gateErrors.length === 0,
 		trace: [...subjects.flatMap((entry) => entry.trace), ...gateTrace],
 		errors: [...subjects.flatMap((entry) => entry.errors), ...gateErrors],
+	}
+}
+
+/**
+ * Build a {@link ProgramDefinition}.
+ *
+ * @remarks
+ * Copies every collection and omits absent optional keys, so the returned
+ * definition is a fresh, JSON-serializable value that never aliases its inputs.
+ *
+ * @param id - The program id
+ * @param name - The display name
+ * @param qualification - The nested qualification definition
+ * @param rating - The nested rating definition; omit for an eligibility-only program
+ * @param input - Optional description, notices, authority, aggregate, and metadata
+ * @returns A fresh program definition
+ *
+ * @example
+ * ```ts
+ * import { programDefinition } from '@orkestrel/program'
+ *
+ * programDefinition('standard', 'Standard', qualification, rating, { notices: [notice] })
+ * ```
+ */
+export function programDefinition(
+	id: string,
+	name: string,
+	qualification: QualificationDefinition,
+	rating?: RatingDefinition,
+	input?: ProgramInput,
+): ProgramDefinition {
+	return {
+		id,
+		name,
+		qualification,
+		...(rating === undefined ? {} : { rating }),
+		...(input?.description === undefined ? {} : { description: input.description }),
+		...(input?.notices === undefined ? {} : { notices: [...input.notices] }),
+		...(input?.authority === undefined ? {} : { authority: input.authority }),
+		...(input?.aggregate === undefined ? {} : { aggregate: input.aggregate }),
+		...(input?.metadata === undefined ? {} : { metadata: copyJSONValue(input.metadata) }),
+	}
+}
+
+/**
+ * Build a {@link Notice}.
+ *
+ * @param id - The notice id
+ * @param message - The message template, carrying optional `{{token}}`s
+ * @param input - Optional presentation scope
+ * @returns A fresh notice
+ *
+ * @example
+ * ```ts
+ * import { noticeDefinition } from '@orkestrel/program'
+ *
+ * noticeDefinition('minimum', 'Minimum earned premium applies')
+ * ```
+ */
+export function noticeDefinition(id: string, message: string, input?: NoticeInput): Notice {
+	return {
+		id,
+		message,
+		...(input?.scope === undefined ? {} : { scope: input.scope }),
+	}
+}
+
+/**
+ * Build an {@link AggregateDefinition}.
+ *
+ * @param fields - The aggregate fields to sum across a batch
+ * @param input - Optional partition field and aggregate gates
+ * @returns A fresh aggregate definition
+ *
+ * @example
+ * ```ts
+ * import { aggregateDefinition } from '@orkestrel/program'
+ *
+ * aggregateDefinition(['amount'], { by: 'location' })
+ * ```
+ */
+export function aggregateDefinition(
+	fields: readonly FieldPath[],
+	input?: AggregateInput,
+): AggregateDefinition {
+	return {
+		fields: [...fields],
+		...(input?.by === undefined ? {} : { by: input.by }),
+		...(input?.gates === undefined ? {} : { gates: input.gates }),
 	}
 }
