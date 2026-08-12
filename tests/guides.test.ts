@@ -12,7 +12,7 @@ import {
 	resolveLink,
 } from '@orkestrel/guide'
 
-const ROOT = fileURLToPath(new URL('../../../', import.meta.url))
+const ROOT = fileURLToPath(new URL('../', import.meta.url))
 
 function walkTsFiles(directory: string, output: Record<string, string>) {
 	for (const entry of readdirSync(directory)) {
