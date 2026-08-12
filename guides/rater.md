@@ -12,7 +12,7 @@
 > (`bail: false`), destroyed in `destroy()`. An injected engine MUST be able to dispatch
 > a quantitative definition — one it cannot dispatch surfaces the engine's own error,
 > never wrapped by this package. Every `rate` call fires once through `Rater`'s typed
-> `emitter` (AGENTS §13). Source: [`src/core`](../../src/core). Surfaced through the
+> `emitter` (AGENTS §13). Source: [`src/core`](../src/core). Surfaced through the
 > `@src/core` barrel.
 
 ## Surface
@@ -120,11 +120,13 @@ isRatingDefinition({ id: 'r1', name: 'Rating', lines: [] }) // true
 
 ### Helpers
 
-Pure, exported utility functions (AGENTS §4.3) — the evidence construction and
-worksheet-joining behind `Rater`'s `rate` projection.
+Pure, exported utility functions (AGENTS §4.3) — the definition builders, the evidence
+construction, and the worksheet-joining behind `Rater`'s `rate` projection.
 
 | API                | Kind     | Summary                                                                                                   |
 | ------------------ | -------- | --------------------------------------------------------------------------------------------------------- |
+| `lineDefinition`   | function | Build a `LineDefinition` from id / name / rate (`overrides` merged over the defaults).                    |
+| `ratingDefinition` | function | Build a `RatingDefinition` from id / name / lines (`overrides` merged over the defaults).                 |
 | `evidenceCheck`    | function | Build an `Evidence` row from an evaluated `Check`.                                                        |
 | `checkEvidence`    | function | Build evidence rows from a quantitative factor's authored checks and evaluated check results.             |
 | `worksheetFactor`  | function | Join one authored quantitative factor to its evaluated `FactorResult`.                                    |
@@ -134,6 +136,18 @@ worksheet-joining behind `Rater`'s `rate` projection.
 | `resultsWorksheet` | function | Join a `QuantitativeDefinition` and its `QuantitativeResult` into a `Worksheet` — the rating audit trail. |
 | `ratedLine`        | function | Build a rated `LineResult` from a line's evaluated `QuantitativeResult`.                                  |
 | `sumAmounts`       | function | Sum defined line amounts.                                                                                 |
+
+Definition building — `id`, `name`, and the required member, with `overrides` merged over
+them; each returns a fresh object and omits absent optional keys entirely:
+
+```ts
+import { lineDefinition, ratingDefinition } from '@orkestrel/rater'
+import { quantitativeDefinition } from '@orkestrel/reason'
+
+const base = lineDefinition('base', 'Base Amount', quantitativeDefinition('base', 'Base', []))
+ratingDefinition('r1', 'Rating', [base])
+ratingDefinition('r1', 'Rating', [base], { description: 'A rating' }) // overrides merged over the defaults
+```
 
 Evidence construction — a `Check` (and its evaluated result) rendered into a
 display-neutral `Evidence` row; `labels` (keyed by dot-joined field) override the resolved
@@ -199,23 +213,18 @@ sumAmounts([]) // undefined — no line carries an amount
 
 ### Factories
 
-| API                | Kind     | Builds…                                                                             |
-| ------------------ | -------- | ----------------------------------------------------------------------------------- |
-| `createRater`      | function | A `RaterInterface` — the rating orchestrator, seeded from `RaterOptions`.           |
-| `lineDefinition`   | function | A `LineDefinition` from id / name / rate (`overrides` merged over the defaults).    |
-| `ratingDefinition` | function | A `RatingDefinition` from id / name / lines (`overrides` merged over the defaults). |
+| API           | Kind     | Builds…                                                                   |
+| ------------- | -------- | ------------------------------------------------------------------------- |
+| `createRater` | function | A `RaterInterface` — the rating orchestrator, seeded from `RaterOptions`. |
 
-Every factory returns a fresh object and omits absent optional keys entirely.
+`createRater` returns a live entity that owns an engine unless one is injected, so every
+rater is destroyed when its work is done.
 
 ```ts
-import { createRater, lineDefinition, ratingDefinition } from '@orkestrel/rater'
-import { quantitativeDefinition } from '@orkestrel/reason'
+import { createRater } from '@orkestrel/rater'
 
 const rater = createRater()
 rater.destroy()
-
-const base = lineDefinition('base', 'Base Amount', quantitativeDefinition('base', 'Base', []))
-ratingDefinition('r1', 'Rating', [base])
 ```
 
 ### Entities
