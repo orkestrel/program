@@ -5,6 +5,7 @@ import { createRater } from '@orkestrel/rater'
 import { createLogicalReasoner, createQuantitativeReasoner, createReason } from '@orkestrel/reason'
 import { STATUS_PRECEDENCE } from '@src/core'
 import type { Subject } from '@orkestrel/reason'
+import { createRecorder } from '@orkestrel/test'
 import {
 	allLinesScopedOutProgramDefinition,
 	batchAggregateProgramDefinition,
@@ -21,7 +22,6 @@ import {
 	conditionalProgramDefinition,
 	conditionalSubject,
 	cloneSubject,
-	createRecorder,
 	createRecordingEngine,
 	createRecordingRater,
 	eligibilityOnlyBatchSubjects,

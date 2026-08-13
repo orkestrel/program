@@ -3,8 +3,8 @@ import { createProgramManager, programDefinition } from '@src/core'
 import { createQualifier } from '@orkestrel/qualifier'
 import { createRater } from '@orkestrel/rater'
 import { createLogicalReasoner, createQuantitativeReasoner, createReason } from '@orkestrel/reason'
+import { createRecorder } from '@orkestrel/test'
 import {
-	createRecorder,
 	eligibleSubject,
 	standardProgramDefinition,
 	standardQualification,

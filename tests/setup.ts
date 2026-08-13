@@ -25,31 +25,6 @@ import {
 } from '@orkestrel/reason'
 import { aggregateDefinition, noticeDefinition, programDefinition } from '@src/core'
 
-export interface TestRecorderInterface<TArgs extends readonly unknown[]> {
-	readonly calls: readonly TArgs[]
-	readonly count: number
-	readonly handler: (...args: TArgs) => void
-	clear(): void
-}
-
-export function createRecorder<TArgs extends readonly unknown[]>(): TestRecorderInterface<TArgs> {
-	const calls: TArgs[] = []
-	return {
-		get calls() {
-			return calls
-		},
-		get count() {
-			return calls.length
-		},
-		handler: (...args: TArgs) => {
-			calls.push(args)
-		},
-		clear() {
-			calls.length = 0
-		},
-	}
-}
-
 export interface RecordingRaterCall {
 	readonly lines: readonly LineDefinition[]
 	readonly subject: Subject
