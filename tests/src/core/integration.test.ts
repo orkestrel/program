@@ -120,7 +120,7 @@ describe('integration', () => {
 			program.execute(eligibleSubject)
 			program.destroy()
 			program.destroy()
-			expect(() => program.execute(eligibleSubject)).toThrowError(
+			expect(() => program.execute(eligibleSubject)).toThrow(
 				expect.objectContaining({ code: 'DESTROYED' }),
 			)
 		})

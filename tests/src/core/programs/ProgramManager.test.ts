@@ -339,14 +339,12 @@ describe('ProgramManager', () => {
 		it('throws DESTROYED from every accessor and mutator, but keeps the emitter reachable', () => {
 			const manager = createProgramManager({ programs: [buildDefinition('a')] })
 			manager.destroy()
-			expect(() => manager.size).toThrowError(expect.objectContaining({ code: 'DESTROYED' }))
-			expect(() => manager.has('a')).toThrowError(expect.objectContaining({ code: 'DESTROYED' }))
-			expect(() => manager.program('a')).toThrowError(
-				expect.objectContaining({ code: 'DESTROYED' }),
-			)
-			expect(() => manager.programs()).toThrowError(expect.objectContaining({ code: 'DESTROYED' }))
-			expect(() => manager.remove('a')).toThrowError(expect.objectContaining({ code: 'DESTROYED' }))
-			expect(() => manager.add(buildDefinition('b'))).toThrowError(
+			expect(() => manager.size).toThrow(expect.objectContaining({ code: 'DESTROYED' }))
+			expect(() => manager.has('a')).toThrow(expect.objectContaining({ code: 'DESTROYED' }))
+			expect(() => manager.program('a')).toThrow(expect.objectContaining({ code: 'DESTROYED' }))
+			expect(() => manager.programs()).toThrow(expect.objectContaining({ code: 'DESTROYED' }))
+			expect(() => manager.remove('a')).toThrow(expect.objectContaining({ code: 'DESTROYED' }))
+			expect(() => manager.add(buildDefinition('b'))).toThrow(
 				expect.objectContaining({ code: 'DESTROYED' }),
 			)
 			expect(() => manager.emitter).not.toThrow()
