@@ -1,16 +1,19 @@
-import type { LineDefinition, RaterInterface, RaterOptions } from '@orkestrel/rater'
+import type { LineDefinition, RatingResult, RaterInterface, RaterOptions } from '@orkestrel/rater'
+import type { QualificationResult, QualifierInterface } from '@orkestrel/qualifier'
 import type {
 	Definition,
 	LogicalDefinition,
+	LogicalResult,
 	ReasonInterface,
 	ReasonOptions,
+	ReasonerInterface,
+	Reasoning,
 	ReasonResult,
 	Subject,
 } from '@orkestrel/reason'
 import type { ProgramDefinition, ProgramEventMap, ProgramInterface } from '@src/core'
-import { createRater, isRatingDefinition } from '@orkestrel/rater'
-import { qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
-import { lineDefinition, ratingDefinition } from '@orkestrel/rater'
+import { createQualifier, qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
+import { createRater, isRatingDefinition, lineDefinition, ratingDefinition } from '@orkestrel/rater'
 import {
 	atom,
 	createLogicalReasoner,
@@ -24,6 +27,363 @@ import {
 	staticFactor,
 } from '@orkestrel/reason'
 import { aggregateDefinition, noticeDefinition, programDefinition } from '@src/core'
+
+class FixedReason implements ReasonInterface {
+	readonly #inner: ReasonInterface
+	readonly #result: ReasonResult
+
+	constructor(result: ReasonResult) {
+		this.#inner = createReason()
+		this.#result = result
+	}
+
+	get emitter() {
+		return this.#inner.emitter
+	}
+
+	reason(subjects: readonly Subject[], definition: Definition): readonly ReasonResult[]
+	reason(subject: Subject, definition: Definition): ReasonResult
+	reason(
+		subjectsOrSubject: readonly Subject[] | Subject,
+		_definition: Definition,
+	): readonly ReasonResult[] | ReasonResult {
+		if (isSubjectArray(subjectsOrSubject)) {
+			return subjectsOrSubject.map(() => this.#result)
+		}
+		return this.#result
+	}
+
+	register(reasoner: ReasonerInterface): void {
+		this.#inner.register(reasoner)
+	}
+
+	reasoner(reasoning: Reasoning): ReasonerInterface | undefined {
+		return this.#inner.reasoner(reasoning)
+	}
+
+	reasoners(): readonly ReasonerInterface[] {
+		return this.#inner.reasoners()
+	}
+
+	supports(reasoning: Reasoning): boolean {
+		return this.#inner.supports(reasoning)
+	}
+
+	validate(definition: Definition) {
+		return this.#inner.validate(definition)
+	}
+
+	destroy(): void {
+		this.#inner.destroy()
+	}
+}
+
+class QualificationResultClass implements QualificationResult {
+	readonly #result: QualificationResult
+
+	constructor(result: QualificationResult) {
+		this.#result = result
+	}
+
+	get id() {
+		return this.#result.id
+	}
+
+	get name() {
+		return this.#result.name
+	}
+
+	get eligibility() {
+		return this.#result.eligibility
+	}
+
+	get scopes() {
+		return this.#result.scopes
+	}
+
+	get findings() {
+		return this.#result.findings
+	}
+
+	get derivations() {
+		return this.#result.derivations
+	}
+
+	get success() {
+		return this.#result.success
+	}
+
+	get trace() {
+		return this.#result.trace
+	}
+
+	get errors() {
+		return this.#result.errors
+	}
+
+	get extension(): boolean {
+		return true
+	}
+}
+
+class MalformedQualificationResult implements QualificationResult {
+	get id(): string {
+		return 'malformed-qualification'
+	}
+
+	get name(): string {
+		return 'Malformed qualification'
+	}
+
+	get eligibility(): 'eligible' {
+		return 'eligible'
+	}
+
+	get scopes(): QualificationResult['scopes'] {
+		return structuredClone(this).scopes
+	}
+
+	get findings(): QualificationResult['findings'] {
+		return []
+	}
+
+	get derivations(): QualificationResult['derivations'] {
+		return []
+	}
+
+	get success(): boolean {
+		return true
+	}
+
+	get trace(): readonly string[] {
+		return []
+	}
+
+	get errors(): readonly string[] {
+		return []
+	}
+}
+
+class MalformedRatingResult implements RatingResult {
+	get lines(): RatingResult['lines'] {
+		return structuredClone(this).lines
+	}
+
+	get success(): boolean {
+		return true
+	}
+}
+
+class MalformedLogicalResult implements LogicalResult {
+	get reasoning(): 'logical' {
+		return 'logical'
+	}
+
+	get conclusion(): boolean {
+		return false
+	}
+
+	get rules(): LogicalResult['rules'] {
+		return structuredClone(this).rules
+	}
+
+	get count(): number {
+		return 0
+	}
+
+	get success(): boolean {
+		return true
+	}
+
+	get trace(): readonly string[] {
+		return []
+	}
+
+	get errors(): readonly string[] {
+		return []
+	}
+}
+
+class ResultClass {
+	readonly #record: object
+
+	constructor(record: object) {
+		this.#record = record
+	}
+
+	get id(): unknown {
+		return Reflect.get(this.#record, 'id')
+	}
+
+	get name(): unknown {
+		return Reflect.get(this.#record, 'name')
+	}
+
+	get key(): unknown {
+		return Reflect.get(this.#record, 'key')
+	}
+
+	get count(): unknown {
+		return Reflect.get(this.#record, 'count')
+	}
+
+	get sums(): unknown {
+		return Reflect.get(this.#record, 'sums')
+	}
+
+	get effect(): unknown {
+		return Reflect.get(this.#record, 'effect')
+	}
+
+	get applied(): unknown {
+		return Reflect.get(this.#record, 'applied')
+	}
+
+	get scope(): unknown {
+		return Reflect.get(this.#record, 'scope')
+	}
+
+	get message(): unknown {
+		return Reflect.get(this.#record, 'message')
+	}
+
+	get premises(): unknown {
+		return Reflect.get(this.#record, 'premises')
+	}
+
+	get eligibility(): unknown {
+		return Reflect.get(this.#record, 'eligibility')
+	}
+
+	get status(): unknown {
+		return Reflect.get(this.#record, 'status')
+	}
+
+	get ineligible(): unknown {
+		return Reflect.get(this.#record, 'ineligible')
+	}
+
+	get referral(): unknown {
+		return Reflect.get(this.#record, 'referral')
+	}
+
+	get conditional(): unknown {
+		return Reflect.get(this.#record, 'conditional')
+	}
+
+	get unrated(): unknown {
+		return Reflect.get(this.#record, 'unrated')
+	}
+
+	get eligible(): unknown {
+		return Reflect.get(this.#record, 'eligible')
+	}
+
+	get decision(): unknown {
+		return Reflect.get(this.#record, 'decision')
+	}
+
+	get qualification(): unknown {
+		return Reflect.get(this.#record, 'qualification')
+	}
+
+	get rating(): unknown {
+		return Reflect.get(this.#record, 'rating')
+	}
+
+	get determinations(): unknown {
+		return Reflect.get(this.#record, 'determinations')
+	}
+
+	get success(): unknown {
+		return Reflect.get(this.#record, 'success')
+	}
+
+	get trace(): unknown {
+		return Reflect.get(this.#record, 'trace')
+	}
+
+	get errors(): unknown {
+		return Reflect.get(this.#record, 'errors')
+	}
+
+	get subjects(): unknown {
+		return Reflect.get(this.#record, 'subjects')
+	}
+
+	get groups(): unknown {
+		return Reflect.get(this.#record, 'groups')
+	}
+
+	get tallies(): unknown {
+		return Reflect.get(this.#record, 'tallies')
+	}
+
+	get valid(): unknown {
+		return Reflect.get(this.#record, 'valid')
+	}
+
+	get warnings(): unknown {
+		return Reflect.get(this.#record, 'warnings')
+	}
+}
+
+export function createFixedQualifier(result: QualificationResult): QualifierInterface {
+	const inner = createQualifier()
+	return {
+		get emitter() {
+			return inner.emitter
+		},
+		qualify() {
+			return result
+		},
+		validate(definition) {
+			return inner.validate(definition)
+		},
+		destroy() {
+			inner.destroy()
+		},
+	}
+}
+
+export function createFixedRater(result: RatingResult): RaterInterface {
+	const inner = createRater()
+	return {
+		get emitter() {
+			return inner.emitter
+		},
+		rate() {
+			return result
+		},
+		destroy() {
+			inner.destroy()
+		},
+	}
+}
+
+export function createFixedEngine(result: ReasonResult): ReasonInterface {
+	return new FixedReason(result)
+}
+
+export function createQualificationResultClass(result: QualificationResult): QualificationResult {
+	return new QualificationResultClass(result)
+}
+
+export function createMalformedQualificationResult(): QualificationResult {
+	return new MalformedQualificationResult()
+}
+
+export function createMalformedRatingResult(): RatingResult {
+	return new MalformedRatingResult()
+}
+
+export function createMalformedLogicalResult(): LogicalResult {
+	return new MalformedLogicalResult()
+}
+
+export function createResultClass(record: object): object {
+	return new ResultClass(record)
+}
 
 export interface RecordingRaterCall {
 	readonly lines: readonly LineDefinition[]

@@ -16,13 +16,14 @@ import type {
 } from '../types.js'
 import { Emitter } from '@orkestrel/emitter'
 import { isArray } from '@orkestrel/contract'
-import { createQualifier } from '@orkestrel/qualifier'
-import { createRater } from '@orkestrel/rater'
+import { createQualifier, isQualificationResult } from '@orkestrel/qualifier'
+import { createRater, isRatingResult } from '@orkestrel/rater'
 import {
 	createEvaluator,
 	createLogicalReasoner,
 	createQuantitativeReasoner,
 	createReason,
+	isLogicalResult,
 } from '@orkestrel/reason'
 import { DEFAULT_PROGRAM_VALIDATE, OUTCOME_KEY } from '../constants.js'
 import { ProgramError } from '../errors.js'
@@ -146,6 +147,13 @@ export class Program implements ProgramInterface {
 		assertProgramSubject(subject)
 		const qualified = buildQualificationSubject(subject, aggregate)
 		const qualification = this.#qualifier.qualify(qualified, this.definition.qualification)
+		if (!isQualificationResult(qualification)) {
+			throw new ProgramError(
+				'MISMATCH',
+				'Qualifier returned invalid qualification result',
+				this.definition.qualification.id,
+			)
+		}
 		this.#emitter.emit('qualify', qualification)
 
 		if (!qualification.success || qualification.eligibility !== 'eligible') {
@@ -154,7 +162,16 @@ export class Program implements ProgramInterface {
 
 		const lines = selectProgramLines(this.definition.rating?.lines ?? [], qualification.scopes)
 		const rating = lines.length === 0 ? undefined : this.#rater.rate(lines, subject)
-		if (rating !== undefined) this.#emitter.emit('rate', rating)
+		if (rating !== undefined) {
+			if (!isRatingResult(rating)) {
+				throw new ProgramError(
+					'MISMATCH',
+					'Rater returned invalid rating result',
+					this.definition.rating?.id,
+				)
+			}
+			this.#emitter.emit('rate', rating)
+		}
 
 		return this.#finish(subject, qualification, rating)
 	}
@@ -178,8 +195,8 @@ export class Program implements ProgramInterface {
 
 		const outcome = { [OUTCOME_KEY]: buildOutcomeProjection(result) }
 		const resolved = this.#engine.reason(outcome, authority)
-		if (resolved.reasoning !== 'logical') {
-			throw new ProgramError('MISMATCH', 'Authority returned non-logical reasoning', authority.id)
+		if (!isLogicalResult(resolved)) {
+			throw new ProgramError('MISMATCH', 'Authority returned invalid logical result', authority.id)
 		}
 
 		const limits = buildLimits(authority, resolved, outcome, this.#evaluator, this.#labels)
@@ -241,8 +258,12 @@ export class Program implements ProgramInterface {
 
 		const record = buildAggregateRecord(count, sums, groups)
 		const resolved = this.#engine.reason(record, gates)
-		if (resolved.reasoning !== 'logical') {
-			throw new ProgramError('MISMATCH', 'Aggregate gates returned non-logical reasoning', gates.id)
+		if (!isLogicalResult(resolved)) {
+			throw new ProgramError(
+				'MISMATCH',
+				'Aggregate gates returned invalid logical result',
+				gates.id,
+			)
 		}
 
 		const determinations = buildLimits(gates, resolved, record, this.#evaluator, this.#labels)

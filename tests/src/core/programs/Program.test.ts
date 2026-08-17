@@ -5,7 +5,7 @@ import { createRater } from '@orkestrel/rater'
 import { createLogicalReasoner, createQuantitativeReasoner, createReason } from '@orkestrel/reason'
 import { STATUS_PRECEDENCE } from '@src/core'
 import type { Subject } from '@orkestrel/reason'
-import { createRecorder } from '@orkestrel/test'
+import { captureError, createRecorder } from '@orkestrel/test'
 import {
 	allLinesScopedOutProgramDefinition,
 	batchAggregateProgramDefinition,
@@ -22,6 +22,13 @@ import {
 	conditionalProgramDefinition,
 	conditionalSubject,
 	cloneSubject,
+	createFixedEngine,
+	createFixedQualifier,
+	createFixedRater,
+	createMalformedLogicalResult,
+	createMalformedQualificationResult,
+	createMalformedRatingResult,
+	createQualificationResultClass,
 	createRecordingEngine,
 	createRecordingRater,
 	eligibilityOnlyBatchSubjects,
@@ -52,6 +59,85 @@ import { logicalDefinition, rule, atom } from '@orkestrel/reason'
 import { standardQualification, standardRating } from '../../../setup.js'
 
 describe('Program', () => {
+	describe('borrowed result containment', () => {
+		it('contains a malformed qualification result as MISMATCH', () => {
+			const qualifier = createFixedQualifier(createMalformedQualificationResult())
+			const program = createProgram(standardProgramDefinition, { qualifier, validate: false })
+			const error = captureError(() => program.execute(eligibleSubject))
+			expect(error).toMatchObject({
+				code: 'MISMATCH',
+				context: standardQualification.id,
+				message: 'Qualifier returned invalid qualification result',
+			})
+			program.destroy()
+			qualifier.destroy()
+		})
+
+		it('contains a malformed rating result as MISMATCH', () => {
+			const rater = createFixedRater(createMalformedRatingResult())
+			const program = createProgram(standardProgramDefinition, { rater, validate: false })
+			const error = captureError(() => program.execute(eligibleSubject))
+			expect(error).toMatchObject({
+				code: 'MISMATCH',
+				context: standardRating.id,
+				message: 'Rater returned invalid rating result',
+			})
+			program.destroy()
+			rater.destroy()
+		})
+
+		it('contains a malformed authority result as MISMATCH', () => {
+			const engine = createFixedEngine(createMalformedLogicalResult())
+			const program = createProgram(brokenAuthorityProgramDefinition, {
+				engine,
+				validate: false,
+			})
+			const error = captureError(() => program.execute({ id: 'authority-subject' }))
+			expect(error).toMatchObject({
+				code: 'MISMATCH',
+				context: brokenAuthorityProgramDefinition.authority?.id,
+				message: 'Authority returned invalid logical result',
+			})
+			program.destroy()
+			engine.destroy()
+		})
+
+		it('contains a malformed aggregate-gate result as MISMATCH', () => {
+			const engine = createFixedEngine(createMalformedLogicalResult())
+			const program = createProgram(brokenAggregateGateProgramDefinition, {
+				engine,
+				validate: false,
+			})
+			const error = captureError(() => program.execute([{ id: 'aggregate-subject' }]))
+			expect(error).toMatchObject({
+				code: 'MISMATCH',
+				context: brokenAggregateGateProgramDefinition.aggregate?.gates?.id,
+				message: 'Aggregate gates returned invalid logical result',
+			})
+			program.destroy()
+			engine.destroy()
+		})
+
+		it('passes a conforming class qualification result through unchanged', () => {
+			const source = createQualifier()
+			const qualification = createQualificationResultClass(
+				source.qualify(eligibleSubject, standardQualification),
+			)
+			const qualifier = createFixedQualifier(qualification)
+			const program = createProgram(eligibilityOnlyProgramDefinition, {
+				qualifier,
+				validate: false,
+			})
+			const result = program.execute(eligibleSubject)
+			expect(result.qualification).toBe(qualification)
+			expect(Reflect.get(result.qualification, 'extension')).toBe(true)
+			expect(result.status).toBe('eligible')
+			program.destroy()
+			qualifier.destroy()
+			source.destroy()
+		})
+	})
+
 	describe('pass pipeline and notices', () => {
 		it('emits notice determinations interpolated against the original subject', () => {
 			const program = createProgram(noticeProgramDefinition)

@@ -199,28 +199,53 @@ Eligibility and rating failures remain nested result evidence rather than throws
 
 ### Validators
 
-Total, exact guards composed from sibling guards and `@orkestrel/contract`
-combinators — adversarial input returns `false`, never throws. Like the sibling
-packages, only AUTHORED/input types get a guard: `Determination`, `ProgramResult`,
-`AggregateResult`, `Tally`, `AggregateGroup`, and `AggregateProjection` are
-internally-produced results, never untrusted input, so they carry no guard of their
-own.
+All guards are total: adversarial input returns `false`, never throws. Authored
+inputs use exact-record posture. `isNotice` stays exact because `Notice` appears
+only in authored definitions; result notices are `Determination` values.
 
-| API                     | Kind     | Narrows to             |
-| ----------------------- | -------- | ---------------------- |
-| `isDecision`            | const    | `Decision`.            |
-| `isStatus`              | const    | `Status`.              |
-| `isProgramEffect`       | const    | `ProgramEffect`.       |
-| `isNotice`              | function | `Notice`.              |
-| `isAggregateDefinition` | function | `AggregateDefinition`. |
-| `isProgramDefinition`   | function | `ProgramDefinition`.   |
+Result guards use open posture. They admit unknown members and class instances,
+refuse arrays, and accept an optional member when it is absent or `undefined`.
+Use `isProgramResult` and `isAggregateResult` when a result arrives through a
+borrowed `ProgramInterface`. Each composite guard checks the full nested closure,
+except the string-dictionary leaves (`sums`, `scopes`), which certify own members
+only — a value carrying them on a prototype is admitted unchecked.
+Holding `isProgramResult` therefore also holds qualifier's published
+`isQualificationResult` closure and rater's published `isRatingResult` closure.
+`isProgramValidationResult` checks this package's own interface directly rather
+than delegating to reason's independently evolvable validation contract.
+
+| API                         | Kind     | Narrows to                         |
+| --------------------------- | -------- | ---------------------------------- |
+| `isDecision`                | const    | `Decision`.                        |
+| `isStatus`                  | const    | `Status`.                          |
+| `isProgramEffect`           | const    | `ProgramEffect`.                   |
+| `isNotice`                  | function | Exact `Notice`.                    |
+| `isAggregateDefinition`     | function | Exact `AggregateDefinition`.       |
+| `isProgramDefinition`       | function | Exact `ProgramDefinition`.         |
+| `isProgramSums`             | function | Open string-to-number sums record. |
+| `isDetermination`           | const    | Open `Determination`.              |
+| `isAggregateGroup`          | const    | Open `AggregateGroup`.             |
+| `isTally`                   | const    | Open `Tally`.                      |
+| `isTallies`                 | function | Total `Record<Status, Tally>`.     |
+| `isProgramResult`           | const    | Open `ProgramResult`.              |
+| `isAggregateResult`         | const    | Open `AggregateResult`.            |
+| `isProgramValidationResult` | const    | Open `ProgramValidationResult`.    |
+
+`isProgramSums` checks every own string-named member, including non-enumerable
+members, as a JavaScript `number`; it ignores inherited and symbol-named members.
+`isTallies` requires every status in `STATUS_PRECEDENCE`, while admitting unknown
+members because `Record<Status, Tally>` does not forbid them.
 
 ```ts
 import {
 	isAggregateDefinition,
+	isAggregateResult,
 	isDecision,
+	isDetermination,
 	isNotice,
 	isProgramDefinition,
+	isProgramResult,
+	isProgramValidationResult,
 	isStatus,
 } from '@orkestrel/program'
 
@@ -229,6 +254,10 @@ isStatus('conditional') // true
 isNotice({ id: 'file', message: 'Subject retained for audit' }) // true
 isAggregateDefinition({ fields: ['amount'], by: 'location' }) // true
 isProgramDefinition(definition) // true
+isDetermination({ id: 'audit', effect: 'notice', applied: true, premises: [] }) // true
+isProgramResult(program.execute(subject)) // true
+isAggregateResult(program.execute(subjects)) // true
+isProgramValidationResult(program.validate()) // true
 ```
 
 `isProgramDefinition` establishes exact shape only. `Program.validate` additionally
