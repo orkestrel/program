@@ -96,14 +96,27 @@ try {
 ### Validators
 
 Total guards (AGENTS §14) composed from `@orkestrel/contract` combinators — adversarial
-input (junk, cycles, hostile prototypes) returns `false`, never throws. Record guards
-are **exact**: an extra key fails.
+input (junk, cycles, hostile prototypes) returns `false`, never throws. The guards use
+two postures based on who produces the value. Authored definitions supplied to this
+package use exact `recordOf` guards because this package owns that input shape; extra
+keys fail. Results returned by a borrowed `RaterInterface` use open `objectOf` guards
+because another valid implementation may return class instances, inherited members,
+or extra members. `isRatingResult` is the borrowed-engine boundary: it and its nested
+result guards reject arrays and check every published typed member without narrowing
+plain numbers, strings, or unknown values.
 
-| API                  | Kind     | Narrows to          |
-| -------------------- | -------- | ------------------- |
-| `isStage`            | const    | `Stage`.            |
-| `isLineDefinition`   | function | `LineDefinition`.   |
-| `isRatingDefinition` | function | `RatingDefinition`. |
+| API                  | Kind     | Checks                                                                                                                                                                      | Leaves unchecked and why                                                                                                      |
+| -------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `isStage`            | const    | One of the three `Stage` literals.                                                                                                                                          | Nothing; a scalar union has no open/exact axis.                                                                               |
+| `isLineDefinition`   | function | Every `LineDefinition` member, including its quantitative definition.                                                                                                       | Nothing; this package owns the authored input record, so extra keys fail.                                                     |
+| `isRatingDefinition` | function | Every `RatingDefinition` member and nested line definition.                                                                                                                 | Nothing; this package owns the authored input record, so extra keys fail.                                                     |
+| `isEvidence`         | function | Optional `field` as `FieldPath`, `label` as string, `comparison` as `Comparison`, and `met` as boolean when defined.                                                        | `expected`, `actual`, and unknown members; their published type is `unknown`, and borrowed results must not be narrowed.      |
+| `isWorksheetFactor`  | function | `id`, optional authored text, `applied`, optional plain-number `value`, and each `Evidence` entry.                                                                          | Unknown members; borrowed result implementations may add them.                                                                |
+| `isWorksheetGroup`   | function | `id`, optional authored text, `applied`, plain-number `value`, and each `WorksheetFactor` entry.                                                                            | Unknown members; borrowed result implementations may add them.                                                                |
+| `isStep`             | function | `stage` through `isStage`, optional `id` / `name` / `expression`, and plain-number `value`.                                                                                 | Unknown members; borrowed result implementations may add them.                                                                |
+| `isWorksheet`        | function | Identity, `aggregation` through reason's `isAggregation`, optional plain-number `precision`, plain-number `value`, nested groups and steps, trace, `errors`, and `success`. | Unknown members; borrowed result implementations may add them.                                                                |
+| `isLineResult`       | function | Identity, optional plain-number `amount`, nested `Worksheet`, and boolean `success`.                                                                                        | Unknown members and the relationship between `amount` and `success`; the published interface types them independently.        |
+| `isRatingResult`     | function | Every nested `LineResult`, optional plain-number `total`, and boolean `success`.                                                                                            | Unknown members and relationships among totals, lines, and success; the borrowed interface publishes only their member types. |
 
 ```ts
 import { isLineDefinition, isRatingDefinition, isStage } from '@orkestrel/rater'
