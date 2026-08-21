@@ -653,6 +653,14 @@ aggregate-gate evaluation (when configured) to have produced no errors.
 
 A standalone `Program`:
 
+- reads the caller's definition once into an owned snapshot, runs construction
+  assertions against that copy, seals its plain-object graph, and exposes only the
+  sealed copy; a `Map`, `Set`, or `Date` reached through a reason `Check.value` is
+  cloned but its contents remain mutable because the seal cannot reach its internal
+  slots
+- refuses a value that structured cloning cannot copy, or a non-empty typed array
+  that cannot be frozen, with `ProgramError('DEFINITION')` and the host error as its
+  cause
 - borrows an injected reason engine or creates one shared quantitative-plus-logical engine
 - injects that engine into any internally created qualifier and rater
 - borrows independently injected qualifier and rater instances

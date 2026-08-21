@@ -60,10 +60,15 @@ import {
  * quantitative-plus-logical engine, injects it into the qualifier and rater it
  * creates, and destroys only what it owns. A definition failure during
  * construction (an invalid definition under `options.validate`) tears down
- * whatever the constructor had already allocated before throwing. `destroy()`
- * is idempotent and REENTRANCY-SAFE — the destroyed flag is set BEFORE any
- * teardown or the `destroy` event fires, so a listener that re-enters
- * `destroy()` is a no-op — and tears the emitter down last.
+ * whatever the constructor had already allocated before throwing. Construction
+ * snapshots the caller's definition once, runs the always-on assertions against
+ * that snapshot, and seals its plain-object graph before exposure. A `Map`, `Set`,
+ * or `Date` reached through a reason `Check.value` is cloned but remains mutable
+ * because its contents live in internal slots. Uncloneable values and non-empty
+ * typed arrays are refused with `ProgramError('DEFINITION')` and the host error
+ * as its cause. `destroy()` is idempotent and REENTRANCY-SAFE — the destroyed
+ * flag is set BEFORE any teardown or the `destroy` event fires, so a listener
+ * that re-enters `destroy()` is a no-op — and tears the emitter down last.
  */
 export class Program implements ProgramInterface {
 	readonly #emitter: Emitter<ProgramEventMap>
@@ -83,10 +88,29 @@ export class Program implements ProgramInterface {
 	readonly definition: ProgramDefinition
 
 	constructor(definition: ProgramDefinition, options?: ProgramOptions) {
-		assertProgramDefinition(definition)
-		this.id = definition.id
-		this.name = definition.name
-		this.definition = definition
+		let snapshot: ProgramDefinition
+		try {
+			snapshot = structuredClone(definition)
+		} catch (cause) {
+			const error = new ProgramError('DEFINITION', 'Program definition could not be cloned')
+			Object.defineProperty(error, 'cause', { configurable: true, value: cause, writable: true })
+			throw error
+		}
+		assertProgramDefinition(snapshot)
+		this.id = snapshot.id
+		this.name = snapshot.name
+		this.definition = snapshot
+		try {
+			this.#seal()
+		} catch (cause) {
+			const error = new ProgramError(
+				'DEFINITION',
+				'Program definition could not be sealed',
+				snapshot.id,
+			)
+			Object.defineProperty(error, 'cause', { configurable: true, value: cause, writable: true })
+			throw error
+		}
 		this.#emitter = new Emitter({
 			...(options?.on === undefined ? {} : { on: options.on }),
 			...(options?.error === undefined ? {} : { error: options.error }),
@@ -110,7 +134,7 @@ export class Program implements ProgramInterface {
 			const validation = this.validate()
 			if (!validation.valid) {
 				this.destroy()
-				throw new ProgramError('DEFINITION', validation.errors.join('; '), definition.id)
+				throw new ProgramError('DEFINITION', validation.errors.join('; '), snapshot.id)
 			}
 		}
 	}
@@ -274,6 +298,18 @@ export class Program implements ProgramInterface {
 	#alive(): void {
 		if (this.#destroyed) {
 			throw new ProgramError('DESTROYED', 'Program has been destroyed', this.id)
+		}
+	}
+
+	#seal(): void {
+		const pending: object[] = [this.definition]
+		while (pending.length > 0) {
+			const value = pending.pop()
+			if (value === undefined || Object.isFrozen(value)) continue
+			Object.freeze(value)
+			for (const child of Object.values(value)) {
+				if (child !== null && typeof child === 'object') pending.push(child)
+			}
 		}
 	}
 }

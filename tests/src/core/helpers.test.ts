@@ -1,5 +1,21 @@
-import { describe, expect, it } from 'vitest'
 import type { FieldPath } from '@orkestrel/contract'
+import type {
+	Eligibility,
+	QualificationDefinition,
+	QualificationResult,
+	QualificationValidationResult,
+	QualifierInterface,
+} from '@orkestrel/qualifier'
+import type {
+	Definition,
+	ReasonInterface,
+	ReasonerInterface,
+	Reasoning,
+	ReasonResult,
+	ReasonValidationResult,
+	Subject,
+} from '@orkestrel/reason'
+import { describe, expect, it } from 'vitest'
 import { isRecord } from '@orkestrel/contract'
 import {
 	AGGREGATE_KEY,
@@ -43,8 +59,6 @@ import {
 	rule,
 	atom,
 } from '@orkestrel/reason'
-import type { QualificationResult } from '@orkestrel/qualifier'
-import type { Eligibility } from '@orkestrel/qualifier'
 import {
 	baseLine,
 	cleanAuthority,
@@ -62,6 +76,81 @@ import {
 } from '../../setup.js'
 import { noticeDefinition, programDefinition } from '@src/core'
 import { qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
+
+class OffContractValidationResult implements ReasonValidationResult {
+	get valid(): boolean {
+		return true
+	}
+
+	get errors(): readonly string[] {
+		return structuredClone(this).errors
+	}
+
+	get warnings(): readonly string[] {
+		return []
+	}
+}
+
+class ScriptedQualifier implements QualifierInterface {
+	readonly #inner = createQualifier()
+
+	get emitter() {
+		return this.#inner.emitter
+	}
+
+	qualify(_subject: Subject, _definition: QualificationDefinition): QualificationResult {
+		throw new Error('Unexpected qualification')
+	}
+
+	validate(_definition: QualificationDefinition): QualificationValidationResult {
+		return new OffContractValidationResult()
+	}
+
+	destroy(): void {
+		this.#inner.destroy()
+	}
+}
+
+class ScriptedReason implements ReasonInterface {
+	readonly #inner = createReason()
+
+	get emitter() {
+		return this.#inner.emitter
+	}
+
+	reason(subjects: readonly Subject[], definition: Definition): readonly ReasonResult[]
+	reason(subject: Subject, definition: Definition): ReasonResult
+	reason(
+		_subjectsOrSubject: readonly Subject[] | Subject,
+		_definition: Definition,
+	): readonly ReasonResult[] | ReasonResult {
+		throw new Error('Unexpected reasoning')
+	}
+
+	register(_reasoner: ReasonerInterface): void {
+		throw new Error('Unexpected reasoner registration')
+	}
+
+	reasoner(_reasoning: Reasoning): ReasonerInterface | undefined {
+		return undefined
+	}
+
+	reasoners(): readonly ReasonerInterface[] {
+		return []
+	}
+
+	supports(_reasoning: Reasoning): boolean {
+		return false
+	}
+
+	validate(_definition: Definition): ReasonValidationResult {
+		return new OffContractValidationResult()
+	}
+
+	destroy(): void {
+		this.#inner.destroy()
+	}
+}
 
 function buildQualification(
 	overrides: Partial<QualificationResult> & Pick<QualificationResult, 'eligibility'>,
@@ -475,6 +564,46 @@ describe('helpers', () => {
 	})
 
 	describe('validateProgramDefinition', () => {
+		it('reports off-contract foreign validation results as errors', () => {
+			const qualifier = new ScriptedQualifier()
+			const source = createQualifier()
+			const engine = new ScriptedReason()
+			try {
+				const qualification = validateProgramDefinition(
+					eligibilityOnlyProgramDefinition,
+					qualifier,
+					engine,
+				)
+				expect(qualification.errors).toContain(
+					'qualification: Qualifier returned invalid validation result',
+				)
+				expect(qualification.valid).toBe(false)
+
+				const definition = programDefinition(
+					'foreign-validation',
+					'Foreign validation',
+					standardQualification,
+					undefined,
+					{
+						authority: cleanAuthority,
+						aggregate: aggregateDefinition(['amount'], { gates: cleanAuthority }),
+					},
+				)
+				const validation = validateProgramDefinition(definition, source, engine)
+				expect(validation.errors).toContain(
+					'authority: Reason engine returned invalid validation result',
+				)
+				expect(validation.errors).toContain(
+					'aggregate: Reason engine returned invalid validation result',
+				)
+				expect(validation.valid).toBe(false)
+			} finally {
+				qualifier.destroy()
+				source.destroy()
+				engine.destroy()
+			}
+		})
+
 		it('warns when a program has no rating lines', () => {
 			const qualifier = createQualifier()
 			const engine = createReason({

@@ -124,7 +124,13 @@ export interface Tally {
  * final decision. An omitted `rating` authors an ELIGIBILITY-ONLY program — the
  * rater is never invoked, an eligible subject resolves to `'eligible'` (or
  * `'conditional'` under an applied condition or scoped restriction), status is
- * never `'unrated'`, and decisions remain reachable through `authority`.
+ * never `'unrated'`, and decisions remain reachable through `authority`. Program
+ * construction clones the definition and seals its plain-object graph. A `Map`,
+ * `Set`, or `Date` reached through a reason `Check.value` is cloned, but its
+ * contents remain mutable because the seal cannot reach its internal slots. A
+ * value that structured cloning cannot copy, or a non-empty typed array that
+ * cannot be frozen, is refused with `ProgramError('DEFINITION')` and the host
+ * error attached as its cause.
  */
 export interface ProgramDefinition {
 	readonly id: string

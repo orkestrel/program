@@ -31,8 +31,13 @@ import type {
 	Tally,
 } from './types.js'
 import { isFiniteNumber, isRecord, resolveField } from '@orkestrel/contract'
-import { findRule, interpolateMessage, logicalPremises } from '@orkestrel/qualifier'
-import { findDuplicates, formatField } from '@orkestrel/reason'
+import {
+	findRule,
+	interpolateMessage,
+	isQualificationValidationResult,
+	logicalPremises,
+} from '@orkestrel/qualifier'
+import { findDuplicates, formatField, isReasonValidationResult } from '@orkestrel/reason'
 import {
 	AGGREGATE_KEY,
 	ELIGIBILITY_DECISIONS,
@@ -564,8 +569,12 @@ export function validateProgramDefinition(
 	if (definition.name.length === 0) errors.push('Program name must not be empty')
 
 	const qualification = qualifier.validate(definition.qualification)
-	errors.push(...qualification.errors.map((error) => `qualification: ${error}`))
-	warnings.push(...qualification.warnings.map((warning) => `qualification: ${warning}`))
+	if (isQualificationValidationResult(qualification)) {
+		errors.push(...qualification.errors.map((error) => `qualification: ${error}`))
+		warnings.push(...qualification.warnings.map((warning) => `qualification: ${warning}`))
+	} else {
+		errors.push('qualification: Qualifier returned invalid validation result')
+	}
 
 	const lines = new Set((definition.rating?.lines ?? []).map((line) => line.id))
 	if (definition.rating !== undefined && lines.size !== definition.rating.lines.length) {
@@ -589,8 +598,12 @@ export function validateProgramDefinition(
 	const authority = definition.authority
 	if (authority !== undefined) {
 		const validation = engine.validate(authority)
-		errors.push(...validation.errors.map((error) => `authority: ${error}`))
-		warnings.push(...validation.warnings.map((warning) => `authority: ${warning}`))
+		if (isReasonValidationResult(validation)) {
+			errors.push(...validation.errors.map((error) => `authority: ${error}`))
+			warnings.push(...validation.warnings.map((warning) => `authority: ${warning}`))
+		} else {
+			errors.push('authority: Reason engine returned invalid validation result')
+		}
 	}
 
 	const aggregate = definition.aggregate
@@ -607,8 +620,12 @@ export function validateProgramDefinition(
 		}
 		if (aggregate.gates !== undefined) {
 			const validation = engine.validate(aggregate.gates)
-			errors.push(...validation.errors.map((error) => `aggregate: ${error}`))
-			warnings.push(...validation.warnings.map((warning) => `aggregate: ${warning}`))
+			if (isReasonValidationResult(validation)) {
+				errors.push(...validation.errors.map((error) => `aggregate: ${error}`))
+				warnings.push(...validation.warnings.map((warning) => `aggregate: ${warning}`))
+			} else {
+				errors.push('aggregate: Reason engine returned invalid validation result')
+			}
 			if (aggregate.fields.length === 0) {
 				warnings.push('Aggregate gates are defined without aggregate fields')
 			}

@@ -1,8 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { createProgram } from '@src/core'
 import { createQualifier } from '@orkestrel/qualifier'
-import { createRater } from '@orkestrel/rater'
-import { createLogicalReasoner, createQuantitativeReasoner, createReason } from '@orkestrel/reason'
+import { createRater, lineDefinition, ratingDefinition } from '@orkestrel/rater'
+import {
+	createLogicalReasoner,
+	createQuantitativeReasoner,
+	createReason,
+	factorGroup,
+	quantitativeDefinition,
+	staticFactor,
+} from '@orkestrel/reason'
 import { STATUS_PRECEDENCE } from '@src/core'
 import type { Subject } from '@orkestrel/reason'
 import { captureError, createRecorder } from '@orkestrel/test'
@@ -144,6 +151,127 @@ describe('Program', () => {
 			const result = program.execute(eligibleSubject)
 			const notice = result.determinations.find((entry) => entry.effect === 'notice')
 			expect(notice?.message).toBe('Program risk-eligible executed for true')
+			program.destroy()
+		})
+	})
+
+	describe('definition ownership', () => {
+		it('leaves cloned Map contents mutable because the seal cannot reach internal slots', () => {
+			const source = new Map([['before', 'owned']])
+			const authority = logicalDefinition('map-authority', 'Map authority', [
+				rule('map-value', [atom('candidate', 'equals', source)], atom('accepted', 'equals', true)),
+			])
+			const program = createProgram(
+				programDefinition('map-definition', 'Map definition', standardQualification, undefined, {
+					authority,
+				}),
+			)
+			const premise = program.definition.authority?.rules[0]?.premises[0]
+			if (premise?.form !== 'atom') throw new Error('Expected the stored premise to be an atom')
+			const value = premise.check.value
+			if (!(value instanceof Map)) throw new Error('Expected the stored check value to be a Map')
+
+			expect(value).not.toBe(source)
+			value.set('after', 'mutable')
+			// Object.freeze cannot reach a Map's internal entry slots, so the documented limit stays mutable.
+			expect(value.get('after')).toBe('mutable')
+			program.destroy()
+		})
+
+		it('contains an uncloneable function check value as DEFINITION with its cause', () => {
+			const authority = logicalDefinition('function-authority', 'Function authority', [
+				rule(
+					'function-value',
+					[atom('candidate', 'equals', () => undefined)],
+					atom('accepted', 'equals', true),
+				),
+			])
+			const error = captureError(() =>
+				createProgram(
+					programDefinition(
+						'function-definition',
+						'Function definition',
+						standardQualification,
+						undefined,
+						{ authority },
+					),
+				),
+			)
+
+			expect(error).toMatchObject({
+				code: 'DEFINITION',
+				cause: expect.objectContaining({ name: 'DataCloneError' }),
+			})
+		})
+
+		it('contains an unfreezable typed-array check value as DEFINITION with its cause', () => {
+			const authority = logicalDefinition('typed-array-authority', 'Typed array authority', [
+				rule(
+					'typed-array-value',
+					[atom('candidate', 'equals', new Uint8Array([1]))],
+					atom('accepted', 'equals', true),
+				),
+			])
+			const error = captureError(() =>
+				createProgram(
+					programDefinition(
+						'typed-array-definition',
+						'Typed array definition',
+						standardQualification,
+						undefined,
+						{ authority },
+					),
+				),
+			)
+
+			expect(error).toMatchObject({
+				code: 'DEFINITION',
+				cause: expect.any(TypeError),
+			})
+		})
+
+		it('keeps behavior unchanged after the caller mutates the source definition', () => {
+			const factor = staticFactor('minimum', 100)
+			const notice = noticeDefinition('original', 'Original notice')
+			const definition = programDefinition(
+				'owned',
+				'Owned program',
+				standardQualification,
+				ratingDefinition('owned-rating', 'Owned rating', [
+					lineDefinition(
+						'owned-line',
+						'Owned line',
+						quantitativeDefinition('owned-rate', 'Owned rate', [
+							factorGroup('owned-group', 'sum', [factor]),
+						]),
+					),
+				]),
+				{ notices: [notice] },
+			)
+			const program = createProgram(definition)
+
+			Reflect.set(factor.source, 'value', 900)
+			Reflect.set(notice, 'message', 'Changed notice')
+
+			const result = program.execute(eligibleSubject)
+			expect(result.rating?.total).toBe(100)
+			expect(result.determinations[0]?.message).toBe('Original notice')
+			program.destroy()
+		})
+
+		it('freezes the stored plain-object graph', () => {
+			const program = createProgram(noticeProgramDefinition)
+			const notices = program.definition.notices
+			const notice = notices?.[0]
+			if (notices === undefined || notice === undefined) {
+				throw new Error('Expected the stored definition to contain a notice')
+			}
+
+			expect(Object.isFrozen(program.definition)).toBe(true)
+			expect(Object.isFrozen(notices)).toBe(true)
+			expect(Object.isFrozen(notice)).toBe(true)
+			expect(Reflect.set(notice, 'message', 'Changed notice')).toBe(false)
+			expect(notice.message).toBe('Program {{id}} executed for {{licensed}}')
 			program.destroy()
 		})
 	})
