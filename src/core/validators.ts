@@ -32,7 +32,7 @@ import {
 } from '@orkestrel/qualifier'
 import { isRatingDefinition, isRatingResult } from '@orkestrel/rater'
 import { isFieldPath, isLogicalDefinition } from '@orkestrel/reason'
-import { STATUS_PRECEDENCE } from './constants.js'
+import { STATUS_PRECEDENCE, STATUSES } from './constants.js'
 
 /**
  * Determine whether a value is a {@link Decision} literal.
@@ -62,13 +62,7 @@ export const isDecision: Guard<Decision> = literalOf('approved', 'denied', 'subm
  * isStatus('eligible') // true
  * ```
  */
-export const isStatus: Guard<Status> = literalOf(
-	'ineligible',
-	'referral',
-	'conditional',
-	'unrated',
-	'eligible',
-)
+export const isStatus: Guard<Status> = literalOf(STATUSES)
 
 /**
  * Determine whether a value is a {@link ProgramEffect} literal.

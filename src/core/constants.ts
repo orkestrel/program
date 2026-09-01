@@ -4,6 +4,15 @@ import type { Eligibility } from '@orkestrel/qualifier'
 /** Default definition validation policy for `createProgram` / `ProgramManager.add`. */
 export const DEFAULT_PROGRAM_VALIDATE = true
 
+/** Every {@link Status} literal — the source the union and its guard derive from. */
+export const STATUSES = Object.freeze([
+	'ineligible',
+	'referral',
+	'conditional',
+	'unrated',
+	'eligible',
+] as const)
+
 /** Status tally precedence order — least to most resolved. */
 export const STATUS_PRECEDENCE: readonly Status[] = Object.freeze([
 	'ineligible',

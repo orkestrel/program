@@ -92,9 +92,12 @@ export class Program implements ProgramInterface {
 		try {
 			snapshot = structuredClone(definition)
 		} catch (cause) {
-			const error = new ProgramError('DEFINITION', 'Program definition could not be cloned')
-			Object.defineProperty(error, 'cause', { configurable: true, value: cause, writable: true })
-			throw error
+			throw new ProgramError(
+				'DEFINITION',
+				'Program definition could not be cloned',
+				undefined,
+				cause,
+			)
 		}
 		assertProgramDefinition(snapshot)
 		this.id = snapshot.id
@@ -103,13 +106,12 @@ export class Program implements ProgramInterface {
 		try {
 			this.#seal()
 		} catch (cause) {
-			const error = new ProgramError(
+			throw new ProgramError(
 				'DEFINITION',
 				'Program definition could not be sealed',
 				snapshot.id,
+				cause,
 			)
-			Object.defineProperty(error, 'cause', { configurable: true, value: cause, writable: true })
-			throw error
 		}
 		this.#emitter = new Emitter({
 			...(options?.on === undefined ? {} : { on: options.on }),

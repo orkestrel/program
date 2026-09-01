@@ -9,12 +9,13 @@ import type {
 } from '@orkestrel/qualifier'
 import type { RatingDefinition, RatingResult, RaterInterface } from '@orkestrel/rater'
 import type { LogicalDefinition, ReasonInterface, Subject } from '@orkestrel/reason'
+import type { STATUSES } from './constants.js'
 
 /** A final authority outcome, derived from global eligibility. */
 export type Decision = 'approved' | 'denied' | 'submitted'
 
 /** The presentation and tally status derived from eligibility, conditions, and rating success. */
-export type Status = 'ineligible' | 'referral' | 'conditional' | 'unrated' | 'eligible'
+export type Status = (typeof STATUSES)[number]
 
 /** A post-qualification program determination effect. */
 export type ProgramEffect = 'notice' | 'limit'

@@ -123,7 +123,7 @@ manager.destroy()
 | Type                      | Kind      | Shape                                                                                                                                          |
 | ------------------------- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Decision`                | type      | `'approved' \| 'denied' \| 'submitted'` — a final authority outcome.                                                                           |
-| `Status`                  | type      | `'ineligible' \| 'referral' \| 'conditional' \| 'unrated' \| 'eligible'`.                                                                      |
+| `Status`                  | type      | `'ineligible' \| 'referral' \| 'conditional' \| 'unrated' \| 'eligible'` — derived from `STATUSES`.                                            |
 | `ProgramEffect`           | type      | `'notice' \| 'limit'` — post-qualification program determinations.                                                                             |
 | `ProgramErrorCode`        | type      | `'DUPLICATE' \| 'MISSING' \| 'DEFINITION' \| 'MISMATCH' \| 'RESERVED' \| 'DESTROYED'`.                                                         |
 | `ProgramInput`            | interface | `{ description?, notices?, authority?, aggregate?, metadata? }`.                                                                               |
@@ -158,6 +158,7 @@ rater supplies `RatingDefinition` and `RatingResult`; reason supplies
 | API                        | Kind  | Summary                                             |
 | -------------------------- | ----- | --------------------------------------------------- |
 | `DEFAULT_PROGRAM_VALIDATE` | const | `true` — validate a definition at construction.     |
+| `STATUSES`                 | const | Every `Status` literal, in tally order.             |
 | `STATUS_PRECEDENCE`        | const | Stable status order for complete tally records.     |
 | `ELIGIBILITY_DECISIONS`    | const | Deterministic decision for each global eligibility. |
 | `AGGREGATE_KEY`            | const | `'aggregate'` — private aggregate context key.      |
@@ -167,14 +168,17 @@ Every constant is `Object.freeze`d. The two reserved keys exist only for compose
 program execution — neither sibling package reserves these subject keys.
 `ELIGIBILITY_DECISIONS` maps each global eligibility to its decision, and
 `STATUS_PRECEDENCE` fixes the order of a complete tally record (it is not an opaque
-severity reducer for status).
+severity reducer for status). `STATUSES` declares status membership: the `Status`
+union and the `isStatus` guard both derive from it, so a status is authored once.
+`STATUS_PRECEDENCE` stays a separately authored ranking, because tally order is a
+decision about presentation rather than a restatement of membership.
 
 ### Errors
 
-| API              | Kind     | Summary                                       |
-| ---------------- | -------- | --------------------------------------------- |
-| `ProgramError`   | class    | Coded programmer error with optional context. |
-| `isProgramError` | function | Narrow a caught value to `ProgramError`.      |
+| API              | Kind     | Summary                                                 |
+| ---------------- | -------- | ------------------------------------------------------- |
+| `ProgramError`   | class    | Coded programmer error with optional context and cause. |
+| `isProgramError` | function | Narrow a caught value to `ProgramError`.                |
 
 ```ts
 import { isProgramError, ProgramError } from '@orkestrel/program'
