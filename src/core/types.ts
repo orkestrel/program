@@ -30,7 +30,7 @@ export type ProgramErrorCode =
 	| 'DESTROYED'
 
 /**
- * Optional fields accepted by `noticeDefinition`.
+ * Optional fields accepted by `buildNotice`.
  *
  * @remarks
  * `scope` — the rating-line id the notice presents against; omitted for an
@@ -41,7 +41,7 @@ export interface NoticeInput {
 }
 
 /**
- * Optional fields accepted by `aggregateDefinition`.
+ * Optional fields accepted by `buildAggregateDefinition`.
  *
  * @remarks
  * `by` — the partition key field; omitted skips partitioning. `gates` — a
@@ -54,7 +54,7 @@ export interface AggregateInput {
 }
 
 /**
- * Optional fields accepted by `programDefinition`.
+ * Optional fields accepted by `buildProgramDefinition`.
  *
  * @remarks
  * `description` — a free-text summary. `notices` — authored unconditional

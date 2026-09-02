@@ -1,23 +1,23 @@
 import { describe, expect, it } from 'vitest'
-import { createProgram, createProgramManager, noticeDefinition, programDefinition } from '@src/core'
+import { createProgram, createProgramManager, buildNotice, buildProgramDefinition } from '@src/core'
 import { isProgramError } from '@src/core'
 import { rulingDefinition, qualificationDefinition } from '@orkestrel/qualifier'
 import { lineDefinition, ratingDefinition } from '@orkestrel/rater'
-import { logicalDefinition, rule, atom } from '@orkestrel/reason'
+import { createLogicalDefinition, createRule, createAtom } from '@orkestrel/reason'
 import { baseLine, standardProgramDefinition, standardRating } from '../../setup.js'
 
 describe('factories', () => {
 	describe('createProgram', () => {
 		it('validates on create by default', () => {
-			const gates = logicalDefinition('gates', 'Gates', [
-				rule('bad', [atom('x', 'equals', true)], atom('y', 'equals', true)),
+			const gates = createLogicalDefinition('gates', 'Gates', [
+				createRule('bad', [createAtom('x', 'equals', true)], createAtom('y', 'equals', true)),
 			])
 			const qualification = qualificationDefinition('bad-qualification', 'Bad', [gates], {
 				rulings: [
 					rulingDefinition('missing', 'gates', 'bad', 'restriction', { scope: 'missing-line' }),
 				],
 			})
-			const definition = programDefinition('bad', 'Bad', qualification, standardRating)
+			const definition = buildProgramDefinition('bad', 'Bad', qualification, standardRating)
 			let error: unknown
 			try {
 				createProgram(definition)
@@ -35,13 +35,17 @@ describe('factories', () => {
 			const qualification = qualificationDefinition('missing-qualification', 'Missing', [], {
 				rulings: [rulingDefinition('scope', 'gates', 'scope', 'restriction', { scope: 'ghost' })],
 			})
-			const gates = logicalDefinition('gates', 'Gates', [
-				rule('always', [atom('id', 'equals', 'x')], atom('blocked', 'equals', true)),
+			const gates = createLogicalDefinition('gates', 'Gates', [
+				createRule(
+					'always',
+					[createAtom('id', 'equals', 'x')],
+					createAtom('blocked', 'equals', true),
+				),
 			])
 			const withPass = qualificationDefinition('missing-qualification', 'Missing', [gates], {
 				...(qualification.rulings === undefined ? {} : { rulings: qualification.rulings }),
 			})
-			const definition = programDefinition('missing', 'Missing', withPass, standardRating)
+			const definition = buildProgramDefinition('missing', 'Missing', withPass, standardRating)
 			let error: unknown
 			try {
 				createProgram(definition, { validate: false })
@@ -60,7 +64,7 @@ describe('factories', () => {
 		})
 
 		it('throws DUPLICATE for duplicate rating-line ids regardless of validate', () => {
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'dup-line',
 				'Dup line',
 				qualificationDefinition('dup-line-qualification', 'Dup line qualification', []),
@@ -80,12 +84,12 @@ describe('factories', () => {
 		})
 
 		it('throws DUPLICATE for duplicate notice ids regardless of validate', () => {
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'dup-notice',
 				'Dup notice',
 				qualificationDefinition('dup-notice-qualification', 'Dup notice qualification', []),
 				undefined,
-				{ notices: [noticeDefinition('n', 'First'), noticeDefinition('n', 'Second')] },
+				{ notices: [buildNotice('n', 'First'), buildNotice('n', 'Second')] },
 			)
 			let error: unknown
 			try {

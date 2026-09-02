@@ -21,7 +21,7 @@ import type { RatingDefinition, RatingResult } from '@orkestrel/rater'
 import type { ProgramDefinition, Status } from '@src/core'
 import { createQualifier, qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
 import { createRater } from '@orkestrel/rater'
-import { createLogicalReasoner, logicalDefinition } from '@orkestrel/reason'
+import { createLogicalReasoner, createLogicalDefinition } from '@orkestrel/reason'
 import { createProgram } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import {
@@ -342,7 +342,7 @@ describe('createQuantOnlyEngine', () => {
 
 	it('misses a logical definition through validate rather than throwing', () => {
 		const engine = createQuantOnlyEngine()
-		const validation = engine.validate(logicalDefinition('gates', 'Gates', []))
+		const validation = engine.validate(createLogicalDefinition('gates', 'Gates', []))
 
 		expect(validation.valid).toBe(false)
 		expect(validation.errors).toEqual(['No reasoner registered for reasoning "logical"'])

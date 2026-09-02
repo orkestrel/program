@@ -23,9 +23,10 @@ import { ProgramManager } from './programs/ProgramManager.js'
  *
  * @example
  * ```ts
- * import { createProgram, programDefinition } from '@orkestrel/program'
+ * import { buildProgramDefinition, createProgram } from '@orkestrel/program'
  *
- * const program = createProgram(programDefinition('standard', 'Standard', qualification, rating))
+ * const definition = buildProgramDefinition('standard', 'Standard', qualification, rating)
+ * const program = createProgram(definition)
  * program.execute({ id: 'risk-1' })
  * program.destroy()
  * ```

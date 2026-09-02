@@ -1,4 +1,4 @@
-import type { FieldPath, JSONValue } from '@orkestrel/contract'
+import type { FieldPath } from '@orkestrel/contract'
 import type {
 	Eligibility,
 	QualificationDefinition,
@@ -31,12 +31,7 @@ import type {
 	Tally,
 } from './types.js'
 import { isFiniteNumber, isRecord, resolveField } from '@orkestrel/contract'
-import {
-	findRule,
-	interpolateMessage,
-	isQualificationValidationResult,
-	logicalPremises,
-} from '@orkestrel/qualifier'
+import { findRule, interpolateMessage, logicalPremises } from '@orkestrel/qualifier'
 import { findDuplicates, formatField, isReasonValidationResult } from '@orkestrel/reason'
 import {
 	AGGREGATE_KEY,
@@ -46,40 +41,6 @@ import {
 } from './constants.js'
 import { ProgramError } from './errors.js'
 import { isProgramDefinition } from './validators.js'
-
-/**
- * Return a fresh JSON value tree that does not alias the input.
- *
- * @remarks
- * The input must be an acyclic JSON tree of bounded depth — a pathologically
- * deep tree throws the engine's `RangeError` (stack exhaustion) rather than
- * hanging. Each copied record uses `Object.defineProperty` for own-property
- * definition, which defends against prototype-pollution keys (`__proto__`).
- *
- * @param value - The JSON value to copy
- * @returns A fresh JSON value
- *
- * @example
- * ```ts
- * import { copyJSONValue } from '@orkestrel/program'
- *
- * copyJSONValue({ a: [1, 2] }) // { a: [1, 2] }, a fresh copy
- * ```
- */
-export function copyJSONValue(value: JSONValue): JSONValue {
-	if (value === null || typeof value !== 'object') return value
-	if (Array.isArray(value)) return value.map(copyJSONValue)
-	const copy: Record<string, JSONValue> = {}
-	for (const [key, entry] of Object.entries(value)) {
-		Object.defineProperty(copy, key, {
-			value: copyJSONValue(entry),
-			enumerable: true,
-			writable: true,
-			configurable: true,
-		})
-	}
-	return copy
-}
 
 /**
  * Determine whether a caller subject already carries a reserved program key.
@@ -569,7 +530,7 @@ export function validateProgramDefinition(
 	if (definition.name.length === 0) errors.push('Program name must not be empty')
 
 	const qualification = qualifier.validate(definition.qualification)
-	if (isQualificationValidationResult(qualification)) {
+	if (isReasonValidationResult(qualification)) {
 		errors.push(...qualification.errors.map((error) => `qualification: ${error}`))
 		warnings.push(...qualification.warnings.map((warning) => `qualification: ${warning}`))
 	} else {
@@ -722,7 +683,7 @@ export function aggregateSums(
 	subjects: readonly Subject[],
 	fields: readonly FieldPath[],
 ): Readonly<Record<string, number>> {
-	let sums = emptySums(fields)
+	let sums = buildEmptySums(fields)
 	for (const subject of subjects) sums = sumFields(sums, subject, fields)
 	return sums
 }
@@ -829,19 +790,19 @@ export function buildAggregateRecord(
 }
 
 /**
- * Build a zero-sum record for a set of aggregate fields.
+ * Builds a zero-sum record for a set of aggregate fields.
  *
  * @param fields - The fields to zero
  * @returns A fresh record of dot-joined field to `0`
  *
  * @example
  * ```ts
- * import { emptySums } from '@orkestrel/program'
+ * import { buildEmptySums } from '@orkestrel/program'
  *
- * emptySums(['amount']) // { amount: 0 }
+ * buildEmptySums(['amount']) // { amount: 0 }
  * ```
  */
-export function emptySums(fields: readonly FieldPath[]): Readonly<Record<string, number>> {
+export function buildEmptySums(fields: readonly FieldPath[]): Readonly<Record<string, number>> {
 	const sums: Record<string, number> = {}
 	for (const field of fields) sums[formatField(field)] = 0
 	return sums
@@ -874,21 +835,22 @@ export function completeTallies(
 }
 
 /**
- * Build complete zero status tallies in {@link STATUS_PRECEDENCE} order.
+ * Builds complete zero status tallies in {@link STATUS_PRECEDENCE} order.
  *
  * @param fields - The fields each tally's sums are zeroed for
  * @returns A fresh, complete tally record
  *
  * @example
  * ```ts
- * import { emptyTallies } from '@orkestrel/program'
+ * import { buildEmptyTallies } from '@orkestrel/program'
  *
- * emptyTallies(['amount'])
+ * buildEmptyTallies(['amount'])
  * ```
  */
-export function emptyTallies(fields: readonly FieldPath[]): Readonly<Record<Status, Tally>> {
+export function buildEmptyTallies(fields: readonly FieldPath[]): Readonly<Record<Status, Tally>> {
 	const entries: Partial<Record<Status, Tally>> = {}
-	for (const status of STATUS_PRECEDENCE) entries[status] = { count: 0, sums: emptySums(fields) }
+	for (const status of STATUS_PRECEDENCE)
+		entries[status] = { count: 0, sums: buildEmptySums(fields) }
 	return completeTallies(entries)
 }
 
@@ -976,7 +938,7 @@ export function buildAggregateResult(
 }
 
 /**
- * Build a {@link ProgramDefinition}.
+ * Builds a fresh {@link ProgramDefinition}.
  *
  * @remarks
  * Copies every collection and omits absent optional keys, so the returned
@@ -991,12 +953,12 @@ export function buildAggregateResult(
  *
  * @example
  * ```ts
- * import { programDefinition } from '@orkestrel/program'
+ * import { buildProgramDefinition } from '@orkestrel/program'
  *
- * programDefinition('standard', 'Standard', qualification, rating, { notices: [notice] })
+ * buildProgramDefinition('standard', 'Standard', qualification, rating, { notices: [notice] })
  * ```
  */
-export function programDefinition(
+export function buildProgramDefinition(
 	id: string,
 	name: string,
 	qualification: QualificationDefinition,
@@ -1012,12 +974,12 @@ export function programDefinition(
 		...(input?.notices === undefined ? {} : { notices: [...input.notices] }),
 		...(input?.authority === undefined ? {} : { authority: input.authority }),
 		...(input?.aggregate === undefined ? {} : { aggregate: input.aggregate }),
-		...(input?.metadata === undefined ? {} : { metadata: copyJSONValue(input.metadata) }),
+		...(input?.metadata === undefined ? {} : { metadata: structuredClone(input.metadata) }),
 	}
 }
 
 /**
- * Build a {@link Notice}.
+ * Builds a fresh {@link Notice}.
  *
  * @param id - The notice id
  * @param message - The message template, carrying optional `{{token}}`s
@@ -1026,12 +988,12 @@ export function programDefinition(
  *
  * @example
  * ```ts
- * import { noticeDefinition } from '@orkestrel/program'
+ * import { buildNotice } from '@orkestrel/program'
  *
- * noticeDefinition('minimum', 'Minimum earned premium applies')
+ * buildNotice('minimum', 'Minimum earned premium applies')
  * ```
  */
-export function noticeDefinition(id: string, message: string, input?: NoticeInput): Notice {
+export function buildNotice(id: string, message: string, input?: NoticeInput): Notice {
 	return {
 		id,
 		message,
@@ -1040,7 +1002,7 @@ export function noticeDefinition(id: string, message: string, input?: NoticeInpu
 }
 
 /**
- * Build an {@link AggregateDefinition}.
+ * Builds a fresh {@link AggregateDefinition}.
  *
  * @param fields - The aggregate fields to sum across a batch
  * @param input - Optional partition field and aggregate gates
@@ -1048,12 +1010,12 @@ export function noticeDefinition(id: string, message: string, input?: NoticeInpu
  *
  * @example
  * ```ts
- * import { aggregateDefinition } from '@orkestrel/program'
+ * import { buildAggregateDefinition } from '@orkestrel/program'
  *
- * aggregateDefinition(['amount'], { by: 'location' })
+ * buildAggregateDefinition(['amount'], { by: 'location' })
  * ```
  */
-export function aggregateDefinition(
+export function buildAggregateDefinition(
 	fields: readonly FieldPath[],
 	input?: AggregateInput,
 ): AggregateDefinition {

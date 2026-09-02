@@ -35,13 +35,13 @@ import {
 	buildAggregateProjection,
 	buildAggregateRecord,
 	buildAggregateResult,
+	buildEmptyTallies,
 	buildLimits,
 	buildNotices,
 	buildOutcomeProjection,
 	buildProgramResult,
 	buildQualificationSubject,
 	deriveStatus,
-	emptyTallies,
 	selectProgramLines,
 	tallyProgram,
 	validateProgramDefinition,
@@ -249,7 +249,7 @@ export class Program implements ProgramInterface {
 		const fields = [...(definition?.fields ?? [])]
 		const sums = aggregateSums(subjects, fields)
 		const groups = aggregateGroups(subjects, fields, definition?.by)
-		let tallies = emptyTallies(fields)
+		let tallies = buildEmptyTallies(fields)
 		const results = subjects.map((subject) => {
 			const projection =
 				definition === undefined

@@ -256,9 +256,9 @@ export const isTally: Guard<Tally> = objectOf({ count: isNumber, sums: isProgram
  *
  * @example
  * ```ts
- * import { emptyTallies, isTallies } from '@orkestrel/program'
+ * import { buildEmptyTallies, isTallies } from '@orkestrel/program'
  *
- * isTallies(emptyTallies([])) // true
+ * isTallies(buildEmptyTallies([])) // true
  * ```
  */
 export function isTallies(value: unknown): value is Readonly<Record<Status, Tally>> {

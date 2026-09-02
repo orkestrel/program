@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-	aggregateDefinition,
+	buildAggregateDefinition,
 	createProgram,
-	emptyTallies,
+	buildEmptyTallies,
 	isAggregateGroup,
 	isAggregateDefinition,
 	isAggregateResult,
@@ -17,8 +17,8 @@ import {
 	isStatus,
 	isTallies,
 	isTally,
-	noticeDefinition,
-	programDefinition,
+	buildNotice,
+	buildProgramDefinition,
 } from '@src/core'
 import {
 	baseLine,
@@ -33,7 +33,7 @@ import {
 import { createHostileValues } from '@orkestrel/test'
 import { qualificationDefinition } from '@orkestrel/qualifier'
 import { ratingDefinition } from '@orkestrel/rater'
-import { logicalDefinition, rule, atom } from '@orkestrel/reason'
+import { createLogicalDefinition, createRule, createAtom } from '@orkestrel/reason'
 
 describe('validators', () => {
 	describe('isDecision', () => {
@@ -103,8 +103,8 @@ describe('validators', () => {
 
 	describe('isNotice', () => {
 		it('accepts a valid notice', () => {
-			expect(isNotice(noticeDefinition('audit', 'Audit trail'))).toBe(true)
-			expect(isNotice(noticeDefinition('scoped', 'Scoped', { scope: 'base' }))).toBe(true)
+			expect(isNotice(buildNotice('audit', 'Audit trail'))).toBe(true)
+			expect(isNotice(buildNotice('scoped', 'Scoped', { scope: 'base' }))).toBe(true)
 		})
 
 		it('rejects malformed notices', () => {
@@ -121,13 +121,17 @@ describe('validators', () => {
 
 	describe('isAggregateDefinition', () => {
 		it('accepts a valid aggregate definition', () => {
-			expect(isAggregateDefinition(aggregateDefinition(['amount']))).toBe(true)
+			expect(isAggregateDefinition(buildAggregateDefinition(['amount']))).toBe(true)
 			expect(
 				isAggregateDefinition(
-					aggregateDefinition(['amount'], {
+					buildAggregateDefinition(['amount'], {
 						by: 'location',
-						gates: logicalDefinition('gates', 'Gates', [
-							rule('cap', [atom('total', 'above', 1)], atom('limited', 'equals', true)),
+						gates: createLogicalDefinition('gates', 'Gates', [
+							createRule(
+								'cap',
+								[createAtom('total', 'above', 1)],
+								createAtom('limited', 'equals', true),
+							),
 						]),
 					}),
 				),
@@ -185,12 +189,12 @@ describe('validators', () => {
 		})
 
 		it('rejects unknown line references at the guard level only structurally', () => {
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'scope-test',
 				'Scope test',
 				standardQualification,
 				standardRating,
-				{ notices: [noticeDefinition('missing', 'Missing', { scope: 'missing-line' })] },
+				{ notices: [buildNotice('missing', 'Missing', { scope: 'missing-line' })] },
 			)
 			expect(isProgramDefinition(definition)).toBe(true)
 			expect(definition.notices?.[0]?.scope).toBe('missing-line')
@@ -270,7 +274,7 @@ describe('validators', () => {
 		})
 
 		it('refuses an authored Notice outside the determination family', () => {
-			expect(isDetermination(noticeDefinition('audit', 'Audit'))).toBe(false)
+			expect(isDetermination(buildNotice('audit', 'Audit'))).toBe(false)
 		})
 
 		it('refuses every hostile value without throwing', () => {
@@ -342,7 +346,7 @@ describe('validators', () => {
 
 	describe('isTallies', () => {
 		it('requires every status while admitting unknown members and class instances', () => {
-			const tallies = emptyTallies([])
+			const tallies = buildEmptyTallies([])
 			expect(isTallies(tallies)).toBe(true)
 			expect(isTallies({ ...tallies, future: { count: 1, sums: {} } })).toBe(true)
 			expect(isTallies(createResultClass(tallies))).toBe(true)
@@ -352,7 +356,7 @@ describe('validators', () => {
 		})
 
 		it('refuses malformed tallies and sums records outside total-status membership', () => {
-			const tallies = emptyTallies([])
+			const tallies = buildEmptyTallies([])
 			expect(isTallies({ ...tallies, referral: { count: '0', sums: {} } })).toBe(false)
 			expect(isTallies([])).toBe(false)
 			expect(isTallies({ premium: 100 })).toBe(false)
@@ -371,13 +375,13 @@ describe('validators', () => {
 
 	describe('isProgramResult', () => {
 		it('accepts a populated real-engine result, unknown members, and a class instance', () => {
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'guarded',
 				'Guarded program',
 				standardQualification,
 				standardRating,
 				{
-					notices: [noticeDefinition('audit', 'Audit')],
+					notices: [buildNotice('audit', 'Audit')],
 					authority: cleanAuthority,
 				},
 			)
@@ -483,7 +487,7 @@ describe('validators', () => {
 
 	describe('isProgramValidationResult', () => {
 		it('accepts a populated real validation, unknown members, and a class instance', () => {
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'',
 				'',
 				qualificationDefinition('qualification', 'Qualification', []),

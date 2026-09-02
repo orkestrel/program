@@ -3,7 +3,6 @@ import type {
 	Eligibility,
 	QualificationDefinition,
 	QualificationResult,
-	QualificationValidationResult,
 	QualifierInterface,
 } from '@orkestrel/qualifier'
 import type {
@@ -20,7 +19,7 @@ import { isRecord } from '@orkestrel/contract'
 import {
 	AGGREGATE_KEY,
 	OUTCOME_KEY,
-	aggregateDefinition,
+	buildAggregateDefinition,
 	assertProgramDefinition,
 	assertProgramSubject,
 	buildAggregateProjection,
@@ -32,11 +31,10 @@ import {
 	buildProgramResult,
 	buildQualificationSubject,
 	completeTallies,
-	copyJSONValue,
 	decideEligibility,
 	deriveStatus,
-	emptySums,
-	emptyTallies,
+	buildEmptySums,
+	buildEmptyTallies,
 	findMissingScopes,
 	formatGroupKey,
 	hasReservedKey,
@@ -55,9 +53,9 @@ import {
 	createLogicalReasoner,
 	createQuantitativeReasoner,
 	createReason,
-	logicalDefinition,
-	rule,
-	atom,
+	createLogicalDefinition,
+	createRule,
+	createAtom,
 } from '@orkestrel/reason'
 import {
 	baseLine,
@@ -74,7 +72,7 @@ import {
 	standardQualification,
 	standardRating,
 } from '../../setup.js'
-import { noticeDefinition, programDefinition } from '@src/core'
+import { buildNotice, buildProgramDefinition } from '@src/core'
 import { qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
 
 class OffContractValidationResult implements ReasonValidationResult {
@@ -102,7 +100,7 @@ class ScriptedQualifier implements QualifierInterface {
 		throw new Error('Unexpected qualification')
 	}
 
-	validate(_definition: QualificationDefinition): QualificationValidationResult {
+	validate(_definition: QualificationDefinition): ReasonValidationResult {
 		return new OffContractValidationResult()
 	}
 
@@ -169,40 +167,6 @@ function buildQualification(
 }
 
 describe('helpers', () => {
-	describe('copyJSONValue', () => {
-		it('deep-clones nested JSON values', () => {
-			const original = { tier: 'gold', nested: { count: 1, tags: ['a'] } }
-			const copy = copyJSONValue(original)
-			expect(copy).toEqual(original)
-			if (isRecord(copy)) {
-				const nested = copy.nested
-				if (isRecord(nested)) {
-					Object.assign(nested, { count: 99 })
-				}
-			}
-			expect(original.nested.count).toBe(1)
-		})
-
-		it('preserves an own __proto__ key without touching the clone prototype', () => {
-			const original = JSON.parse('{"__proto__": {"x": 1}}')
-			const copy = copyJSONValue(original)
-			if (!isRecord(copy)) {
-				throw new Error('expected a record clone')
-			}
-			expect(Object.getPrototypeOf(copy)).toBe(Object.prototype)
-			expect(Object.hasOwn(copy, '__proto__')).toBe(true)
-			const descriptor = Object.getOwnPropertyDescriptor(copy, '__proto__')
-			expect(descriptor?.value).toEqual({ x: 1 })
-			expect(descriptor?.enumerable).toBe(true)
-		})
-
-		it('returns primitives unchanged', () => {
-			expect(copyJSONValue('text')).toBe('text')
-			expect(copyJSONValue(42)).toBe(42)
-			expect(copyJSONValue(null)).toBe(null)
-		})
-	})
-
 	describe('hasReservedKey', () => {
 		it('detects aggregate and outcome keys', () => {
 			expect(hasReservedKey({ id: 'x' })).toBe(false)
@@ -302,7 +266,6 @@ describe('helpers', () => {
 						{
 							id: 'base',
 							name: 'Base',
-							success: false,
 							worksheet: {
 								id: 'base-rate',
 								name: 'Base rate',
@@ -375,7 +338,7 @@ describe('helpers', () => {
 
 	describe('buildNotices', () => {
 		it('interpolates messages against the original subject', () => {
-			const notices = buildNotices([noticeDefinition('rated', 'Program {{id}} executed')], {
+			const notices = buildNotices([buildNotice('rated', 'Program {{id}} executed')], {
 				id: 'risk-1',
 				licensed: true,
 			})
@@ -438,8 +401,12 @@ describe('helpers', () => {
 
 		it('includes decision only when authority is clean and status is not unrated', () => {
 			const qualification = buildQualification({ eligibility: 'eligible' })
-			const authority = logicalDefinition('authority', 'Authority', [
-				rule('never', [atom('blocked', 'equals', true)], atom('limited', 'equals', true)),
+			const authority = createLogicalDefinition('authority', 'Authority', [
+				createRule(
+					'never',
+					[createAtom('blocked', 'equals', true)],
+					createAtom('limited', 'equals', true),
+				),
 			])
 			const engine = createReason({ reasoners: [createLogicalReasoner()], bail: false })
 			const resolved = engine.reason({ outcome: { status: 'eligible' } }, authority)
@@ -504,14 +471,14 @@ describe('helpers', () => {
 
 	describe('findMissingScopes', () => {
 		it('returns missing ruling and notice scopes', () => {
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'missing',
 				'Missing',
 				qualificationDefinition('q', 'Q', [], {
 					rulings: [rulingDefinition('r', 'p', 'r', 'restriction', { scope: 'ghost' })],
 				}),
 				standardProgramDefinition.rating,
-				{ notices: [noticeDefinition('n', 'N', { scope: 'missing' })] },
+				{ notices: [buildNotice('n', 'N', { scope: 'missing' })] },
 			)
 			expect([...findMissingScopes(definition)].sort()).toEqual(['ghost', 'missing'].sort())
 		})
@@ -523,7 +490,7 @@ describe('helpers', () => {
 		})
 
 		it('throws MISSING with the exact unknown-scope message', () => {
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'assert-missing',
 				'Assert missing',
 				qualificationDefinition('q', 'Q', [], {
@@ -537,7 +504,7 @@ describe('helpers', () => {
 		})
 
 		it('throws DUPLICATE naming the duplicate rating-line id', () => {
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'assert-dup-line',
 				'Assert dup line',
 				qualificationDefinition('q', 'Q', []),
@@ -550,13 +517,13 @@ describe('helpers', () => {
 		})
 
 		it('throws DUPLICATE naming the duplicate notice id', () => {
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'assert-dup-notice',
 				'Assert dup notice',
 				qualificationDefinition('q', 'Q', []),
 				undefined,
 				{
-					notices: [noticeDefinition('n', 'First'), noticeDefinition('n', 'Second')],
+					notices: [buildNotice('n', 'First'), buildNotice('n', 'Second')],
 				},
 			)
 			expect(() => assertProgramDefinition(definition)).toThrow('Duplicate notice id: n')
@@ -579,14 +546,14 @@ describe('helpers', () => {
 				)
 				expect(qualification.valid).toBe(false)
 
-				const definition = programDefinition(
+				const definition = buildProgramDefinition(
 					'foreign-validation',
 					'Foreign validation',
 					standardQualification,
 					undefined,
 					{
 						authority: cleanAuthority,
-						aggregate: aggregateDefinition(['amount'], { gates: cleanAuthority }),
+						aggregate: buildAggregateDefinition(['amount'], { gates: cleanAuthority }),
 					},
 				)
 				const validation = validateProgramDefinition(definition, source, engine)
@@ -639,7 +606,7 @@ describe('helpers', () => {
 				reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
 				bail: false,
 			})
-			const definition = programDefinition('', '', qualificationDefinition('q', 'Q', []))
+			const definition = buildProgramDefinition('', '', qualificationDefinition('q', 'Q', []))
 			const validation = validateProgramDefinition(definition, qualifier, engine)
 			expect(validation.errors).toContain('Program id must not be empty')
 			expect(validation.errors).toContain('Program name must not be empty')
@@ -653,7 +620,7 @@ describe('helpers', () => {
 				reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
 				bail: false,
 			})
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'dup-line-validate',
 				'Dup line validate',
 				qualificationDefinition('q', 'Q', []),
@@ -674,12 +641,12 @@ describe('helpers', () => {
 				reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
 				bail: false,
 			})
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'dup-notice-validate',
 				'Dup notice validate',
 				qualificationDefinition('q', 'Q', []),
 				undefined,
-				{ notices: [noticeDefinition('n', 'First'), noticeDefinition('n', 'Second')] },
+				{ notices: [buildNotice('n', 'First'), buildNotice('n', 'Second')] },
 			)
 			const validation = validateProgramDefinition(definition, qualifier, engine)
 			expect(validation.errors).toContain('Duplicate notice id "n"')
@@ -693,14 +660,14 @@ describe('helpers', () => {
 				reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
 				bail: false,
 			})
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'missing-scope-validate',
 				'Missing scope validate',
 				qualificationDefinition('q', 'Q', [], {
 					rulings: [rulingDefinition('r', 'p', 'r', 'restriction', { scope: 'ghost' })],
 				}),
 				undefined,
-				{ notices: [noticeDefinition('n', 'N', { scope: 'ghost' })] },
+				{ notices: [buildNotice('n', 'N', { scope: 'ghost' })] },
 			)
 			const validation = validateProgramDefinition(definition, qualifier, engine)
 			expect(validation.errors).toContain(
@@ -717,7 +684,7 @@ describe('helpers', () => {
 				reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
 				bail: false,
 			})
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'no-rating-scope',
 				'No rating scope',
 				qualificationDefinition('q', 'Q', [], {
@@ -736,12 +703,12 @@ describe('helpers', () => {
 				reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
 				bail: false,
 			})
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'aggregate-fields',
 				'Aggregate fields',
 				qualificationDefinition('q', 'Q', []),
 				undefined,
-				{ aggregate: aggregateDefinition([[], 'amount', 'amount'], { by: [] }) },
+				{ aggregate: buildAggregateDefinition([[], 'amount', 'amount'], { by: [] }) },
 			)
 			const validation = validateProgramDefinition(definition, qualifier, engine)
 			expect(validation.errors).toContain('Aggregate fields must be non-empty')
@@ -757,12 +724,12 @@ describe('helpers', () => {
 				reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
 				bail: false,
 			})
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'gates-no-fields',
 				'Gates no fields',
 				qualificationDefinition('q', 'Q', []),
 				undefined,
-				{ aggregate: aggregateDefinition([], { gates: cleanAuthority }) },
+				{ aggregate: buildAggregateDefinition([], { gates: cleanAuthority }) },
 			)
 			const validation = validateProgramDefinition(definition, qualifier, engine)
 			expect(validation.warnings).toContain('Aggregate gates are defined without aggregate fields')
@@ -776,7 +743,7 @@ describe('helpers', () => {
 				reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
 				bail: false,
 			})
-			const definition = programDefinition('nested-q', '', qualificationDefinition('', '', []))
+			const definition = buildProgramDefinition('nested-q', '', qualificationDefinition('', '', []))
 			const validation = validateProgramDefinition(definition, qualifier, engine)
 			expect(validation.errors.some((error) => error.startsWith('qualification: '))).toBe(true)
 			qualifier.destroy()
@@ -786,7 +753,7 @@ describe('helpers', () => {
 		it('prefixes a nested authority error with "authority: " (quant-only engine)', () => {
 			const qualifier = createQualifier()
 			const engine = createQuantOnlyEngine()
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'nested-authority',
 				'Nested authority',
 				qualificationDefinition('q', 'Q', []),
@@ -804,12 +771,12 @@ describe('helpers', () => {
 		it('prefixes a nested aggregate-gates error with "aggregate: " (quant-only engine)', () => {
 			const qualifier = createQualifier()
 			const engine = createQuantOnlyEngine()
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'nested-gates',
 				'Nested gates',
 				qualificationDefinition('q', 'Q', []),
 				undefined,
-				{ aggregate: aggregateDefinition(['amount'], { gates: cleanAuthority }) },
+				{ aggregate: buildAggregateDefinition(['amount'], { gates: cleanAuthority }) },
 			)
 			const validation = validateProgramDefinition(definition, qualifier, engine)
 			expect(validation.errors).toContain(
@@ -877,8 +844,8 @@ describe('helpers', () => {
 		})
 
 		it('builds empty sums and complete tallies', () => {
-			expect(emptySums(['amount'])).toEqual({ amount: 0 })
-			const tallies = emptyTallies(['amount'])
+			expect(buildEmptySums(['amount'])).toEqual({ amount: 0 })
+			const tallies = buildEmptyTallies(['amount'])
 			expect(Object.keys(tallies)).toHaveLength(5)
 			expect(tallies.eligible.sums.amount).toBe(0)
 		})
@@ -887,7 +854,7 @@ describe('helpers', () => {
 			const tallies = completeTallies({ eligible: { count: 1, sums: { amount: 5 } } })
 			expect(tallies.referral.count).toBe(0)
 			const folded = tallyProgram(
-				emptyTallies(['amount']),
+				buildEmptyTallies(['amount']),
 				buildProgramResult(
 					standardProgramDefinition,
 					buildQualification({ eligibility: 'eligible' }),
@@ -915,7 +882,7 @@ describe('helpers', () => {
 				[subjectResult],
 				[],
 				[],
-				emptyTallies(['amount']),
+				buildEmptyTallies(['amount']),
 				{ amount: 0 },
 			)
 			expect(aggregate.count).toBe(1)
@@ -945,7 +912,7 @@ describe('helpers', () => {
 				[subjectResult],
 				[],
 				[],
-				emptyTallies(['amount']),
+				buildEmptyTallies(['amount']),
 				{ amount: 0 },
 				{ gates: failedGates },
 			)
@@ -1037,10 +1004,15 @@ describe('helpers', () => {
 
 	describe('buildLimits', () => {
 		it('emits limit determinations only for applied rules', () => {
-			const definition = logicalDefinition('limits', 'Limits', [
-				rule('fire', [atom('blocked', 'equals', true)], atom('limited', 'equals', true), {
-					description: 'Blocked for {{id}}',
-				}),
+			const definition = createLogicalDefinition('limits', 'Limits', [
+				createRule(
+					'fire',
+					[createAtom('blocked', 'equals', true)],
+					createAtom('limited', 'equals', true),
+					{
+						description: 'Blocked for {{id}}',
+					},
+				),
 			])
 			const engine = createReason({ reasoners: [createLogicalReasoner()], bail: false })
 			const resolved = engine.reason({ id: 'risk-1', blocked: true }, definition)
@@ -1057,8 +1029,12 @@ describe('helpers', () => {
 		})
 
 		it('omits message when the applied rule has no description', () => {
-			const definition = logicalDefinition('limits-no-description', 'Limits no description', [
-				rule('fire', [atom('blocked', 'equals', true)], atom('limited', 'equals', true)),
+			const definition = createLogicalDefinition('limits-no-description', 'Limits no description', [
+				createRule(
+					'fire',
+					[createAtom('blocked', 'equals', true)],
+					createAtom('limited', 'equals', true),
+				),
 			])
 			const engine = createReason({ reasoners: [createLogicalReasoner()], bail: false })
 			const resolved = engine.reason({ blocked: true }, definition)
@@ -1070,10 +1046,15 @@ describe('helpers', () => {
 		})
 
 		it('returns an empty list when no rule applies', () => {
-			const definition = logicalDefinition('limits-never', 'Limits never', [
-				rule('fire', [atom('blocked', 'equals', true)], atom('limited', 'equals', true), {
-					description: 'Blocked',
-				}),
+			const definition = createLogicalDefinition('limits-never', 'Limits never', [
+				createRule(
+					'fire',
+					[createAtom('blocked', 'equals', true)],
+					createAtom('limited', 'equals', true),
+					{
+						description: 'Blocked',
+					},
+				),
 			])
 			const engine = createReason({ reasoners: [createLogicalReasoner()], bail: false })
 			const resolved = engine.reason({ blocked: false }, definition)
@@ -1086,12 +1067,12 @@ describe('helpers', () => {
 
 	describe('buildNotices edges', () => {
 		it('interpolates a missing token to an empty string', () => {
-			const notices = buildNotices([noticeDefinition('n', 'Value {{missing}}')], { id: 'x' })
+			const notices = buildNotices([buildNotice('n', 'Value {{missing}}')], { id: 'x' })
 			expect(notices[0]?.message).toBe('Value ')
 		})
 
 		it('interpolates a nested path token', () => {
-			const notices = buildNotices([noticeDefinition('n', 'City {{location.city}}')], {
+			const notices = buildNotices([buildNotice('n', 'City {{location.city}}')], {
 				id: 'x',
 				location: { city: 'NYC' },
 			})
@@ -1099,7 +1080,7 @@ describe('helpers', () => {
 		})
 
 		it('groups a numeric value with en-US thousands separators', () => {
-			const notices = buildNotices([noticeDefinition('n', 'Total {{amount}}')], {
+			const notices = buildNotices([buildNotice('n', 'Total {{amount}}')], {
 				id: 'x',
 				amount: 1234567,
 			})
@@ -1160,22 +1141,22 @@ describe('helpers', () => {
 		})
 	})
 
-	describe('noticeDefinition', () => {
+	describe('buildNotice', () => {
 		it('omits absent optional scope', () => {
-			const notice = noticeDefinition('audit', 'Audit')
+			const notice = buildNotice('audit', 'Audit')
 			expect(notice).toEqual({ id: 'audit', message: 'Audit' })
 			expect(Object.hasOwn(notice, 'scope')).toBe(false)
 		})
 
 		it('includes scope when provided', () => {
-			expect(noticeDefinition('audit', 'Audit', { scope: 'base' }).scope).toBe('base')
+			expect(buildNotice('audit', 'Audit', { scope: 'base' }).scope).toBe('base')
 		})
 	})
 
-	describe('aggregateDefinition', () => {
+	describe('buildAggregateDefinition', () => {
 		it('copies fields and omits absent optional keys', () => {
 			const fields: readonly FieldPath[] = ['amount']
-			const aggregate = aggregateDefinition(fields)
+			const aggregate = buildAggregateDefinition(fields)
 			expect(aggregate.fields).toEqual(['amount'])
 			expect(aggregate.fields).not.toBe(fields)
 			expect(Object.hasOwn(aggregate, 'by')).toBe(false)
@@ -1183,15 +1164,21 @@ describe('helpers', () => {
 		})
 	})
 
-	describe('programDefinition', () => {
+	describe('buildProgramDefinition', () => {
 		it('copies collections and metadata independently', () => {
-			const notices = [noticeDefinition('audit', 'Audit')]
+			const notices = [buildNotice('audit', 'Audit')]
 			const metadata = { tier: 'gold', nested: { value: 1 } }
-			const definition = programDefinition('copy', 'Copy', standardQualification, standardRating, {
-				notices,
-				metadata,
-			})
-			notices.push(noticeDefinition('extra', 'Extra'))
+			const definition = buildProgramDefinition(
+				'copy',
+				'Copy',
+				standardQualification,
+				standardRating,
+				{
+					notices,
+					metadata,
+				},
+			)
+			notices.push(buildNotice('extra', 'Extra'))
 			if (
 				typeof metadata.nested === 'object' &&
 				metadata.nested !== null &&
@@ -1201,6 +1188,26 @@ describe('helpers', () => {
 			}
 			expect(definition.notices).toHaveLength(1)
 			expect(definition.metadata).toEqual({ tier: 'gold', nested: { value: 1 } })
+		})
+
+		it('keeps an own __proto__ metadata key without touching the copy prototype', () => {
+			const metadata = JSON.parse('{"__proto__": {"x": 1}}')
+			const definition = buildProgramDefinition(
+				'proto',
+				'Proto',
+				standardQualification,
+				standardRating,
+				{ metadata },
+			)
+			const copy = definition.metadata
+			if (!isRecord(copy)) {
+				throw new Error('expected a record copy')
+			}
+			expect(Object.getPrototypeOf(copy)).toBe(Object.prototype)
+			expect(Object.hasOwn(copy, '__proto__')).toBe(true)
+			const descriptor = Object.getOwnPropertyDescriptor(copy, '__proto__')
+			expect(descriptor?.value).toEqual({ x: 1 })
+			expect(descriptor?.enumerable).toBe(true)
 		})
 	})
 })

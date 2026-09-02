@@ -6,9 +6,9 @@ import {
 	createLogicalReasoner,
 	createQuantitativeReasoner,
 	createReason,
-	factorGroup,
-	quantitativeDefinition,
-	staticFactor,
+	createFactorGroup,
+	createQuantitativeDefinition,
+	createStaticFactor,
 } from '@orkestrel/reason'
 import { STATUS_PRECEDENCE } from '@src/core'
 import type { Subject } from '@orkestrel/reason'
@@ -60,9 +60,9 @@ import {
 	standardProgramDefinition,
 	unratedAuthority,
 } from '../../../setup.js'
-import { programDefinition, noticeDefinition } from '@src/core'
+import { buildProgramDefinition, buildNotice } from '@src/core'
 import { qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
-import { logicalDefinition, rule, atom } from '@orkestrel/reason'
+import { createLogicalDefinition, createRule, createAtom } from '@orkestrel/reason'
 import { standardQualification, standardRating } from '../../../setup.js'
 
 describe('Program', () => {
@@ -158,13 +158,23 @@ describe('Program', () => {
 	describe('definition ownership', () => {
 		it('leaves cloned Map contents mutable because the seal cannot reach internal slots', () => {
 			const source = new Map([['before', 'owned']])
-			const authority = logicalDefinition('map-authority', 'Map authority', [
-				rule('map-value', [atom('candidate', 'equals', source)], atom('accepted', 'equals', true)),
+			const authority = createLogicalDefinition('map-authority', 'Map authority', [
+				createRule(
+					'map-value',
+					[createAtom('candidate', 'equals', source)],
+					createAtom('accepted', 'equals', true),
+				),
 			])
 			const program = createProgram(
-				programDefinition('map-definition', 'Map definition', standardQualification, undefined, {
-					authority,
-				}),
+				buildProgramDefinition(
+					'map-definition',
+					'Map definition',
+					standardQualification,
+					undefined,
+					{
+						authority,
+					},
+				),
 			)
 			const premise = program.definition.authority?.rules[0]?.premises[0]
 			if (premise?.form !== 'atom') throw new Error('Expected the stored premise to be an atom')
@@ -179,16 +189,16 @@ describe('Program', () => {
 		})
 
 		it('contains an uncloneable function check value as DEFINITION with its cause', () => {
-			const authority = logicalDefinition('function-authority', 'Function authority', [
-				rule(
+			const authority = createLogicalDefinition('function-authority', 'Function authority', [
+				createRule(
 					'function-value',
-					[atom('candidate', 'equals', () => undefined)],
-					atom('accepted', 'equals', true),
+					[createAtom('candidate', 'equals', () => undefined)],
+					createAtom('accepted', 'equals', true),
 				),
 			])
 			const error = captureError(() =>
 				createProgram(
-					programDefinition(
+					buildProgramDefinition(
 						'function-definition',
 						'Function definition',
 						standardQualification,
@@ -205,16 +215,16 @@ describe('Program', () => {
 		})
 
 		it('contains an unfreezable typed-array check value as DEFINITION with its cause', () => {
-			const authority = logicalDefinition('typed-array-authority', 'Typed array authority', [
-				rule(
+			const authority = createLogicalDefinition('typed-array-authority', 'Typed array authority', [
+				createRule(
 					'typed-array-value',
-					[atom('candidate', 'equals', new Uint8Array([1]))],
-					atom('accepted', 'equals', true),
+					[createAtom('candidate', 'equals', new Uint8Array([1]))],
+					createAtom('accepted', 'equals', true),
 				),
 			])
 			const error = captureError(() =>
 				createProgram(
-					programDefinition(
+					buildProgramDefinition(
 						'typed-array-definition',
 						'Typed array definition',
 						standardQualification,
@@ -231,9 +241,9 @@ describe('Program', () => {
 		})
 
 		it('keeps behavior unchanged after the caller mutates the source definition', () => {
-			const factor = staticFactor('minimum', 100)
-			const notice = noticeDefinition('original', 'Original notice')
-			const definition = programDefinition(
+			const factor = createStaticFactor('minimum', 100)
+			const notice = buildNotice('original', 'Original notice')
+			const definition = buildProgramDefinition(
 				'owned',
 				'Owned program',
 				standardQualification,
@@ -241,8 +251,8 @@ describe('Program', () => {
 					lineDefinition(
 						'owned-line',
 						'Owned line',
-						quantitativeDefinition('owned-rate', 'Owned rate', [
-							factorGroup('owned-group', 'sum', [factor]),
+						createQuantitativeDefinition('owned-rate', 'Owned rate', [
+							createFactorGroup('owned-group', 'sum', [factor]),
 						]),
 					),
 				]),
@@ -307,7 +317,7 @@ describe('Program', () => {
 	describe('authority and totals', () => {
 		it('runs authority last and omits decision when a limit applies', () => {
 			const program = createProgram(
-				programDefinition(
+				buildProgramDefinition(
 					'authority-conditional',
 					'Authority conditional',
 					conditionalProgramDefinition.qualification,
@@ -341,7 +351,7 @@ describe('Program', () => {
 			expect(denied.decision).toBe('denied')
 
 			const referralProgram = createProgram(
-				programDefinition(
+				buildProgramDefinition(
 					referralProgramDefinition.id,
 					referralProgramDefinition.name,
 					referralProgramDefinition.qualification,
@@ -358,7 +368,7 @@ describe('Program', () => {
 		})
 
 		it('runs authority for unrated outcomes but omits decision', () => {
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				emptyLinesProgramDefinition.id,
 				emptyLinesProgramDefinition.name,
 				emptyLinesProgramDefinition.qualification,
@@ -418,7 +428,7 @@ describe('Program', () => {
 		})
 
 		it('throws MISSING at construction for an unknown line reference', () => {
-			const definition = programDefinition(
+			const definition = buildProgramDefinition(
 				'missing',
 				'Missing',
 				qualificationDefinition('q', 'Q', [], {
@@ -426,10 +436,10 @@ describe('Program', () => {
 				}),
 				standardRating,
 			)
-			const gates = logicalDefinition('p', 'P', [
-				rule('r', [atom('id', 'equals', 'x')], atom('blocked', 'equals', true)),
+			const gates = createLogicalDefinition('p', 'P', [
+				createRule('r', [createAtom('id', 'equals', 'x')], createAtom('blocked', 'equals', true)),
 			])
-			const withPass = programDefinition(
+			const withPass = buildProgramDefinition(
 				'missing',
 				'Missing',
 				qualificationDefinition('q', 'Q', [gates], {
@@ -450,7 +460,7 @@ describe('Program', () => {
 		})
 
 		it('throws DEFINITION for a malformed definition', () => {
-			const definition = programDefinition('', '', standardQualification, standardRating)
+			const definition = buildProgramDefinition('', '', standardQualification, standardRating)
 			let error: unknown
 			try {
 				createProgram(definition)
@@ -566,14 +576,14 @@ describe('Program', () => {
 		it('emits single-subject events in contract order', () => {
 			const definition = buildAuthorityProgram(cleanAuthority)
 			const withNotice = createProgram(
-				programDefinition(
+				buildProgramDefinition(
 					definition.id,
 					definition.name,
 					definition.qualification,
 					definition.rating,
 					{
 						...(definition.authority === undefined ? {} : { authority: definition.authority }),
-						notices: [noticeDefinition('audit', 'Audit {{id}}')],
+						notices: [buildNotice('audit', 'Audit {{id}}')],
 					},
 				),
 			)
@@ -704,7 +714,7 @@ describe('Program', () => {
 			program.destroy()
 
 			const authorized = createProgram(
-				programDefinition(
+				buildProgramDefinition(
 					eligibilityOnlyConditionalProgramDefinition.id,
 					eligibilityOnlyConditionalProgramDefinition.name,
 					eligibilityOnlyConditionalProgramDefinition.qualification,
@@ -720,7 +730,7 @@ describe('Program', () => {
 
 		it('resolves referral and submitted', () => {
 			const program = createProgram(
-				programDefinition(
+				buildProgramDefinition(
 					eligibilityOnlyReferralProgramDefinition.id,
 					eligibilityOnlyReferralProgramDefinition.name,
 					eligibilityOnlyReferralProgramDefinition.qualification,
@@ -871,7 +881,7 @@ describe('Program', () => {
 	describe('aggregate numeric edges', () => {
 		it('treats NaN, Infinity, -Infinity, strings, and absent values as zero contribution', () => {
 			const program = createProgram(
-				programDefinition(
+				buildProgramDefinition(
 					'numeric-edges',
 					'Numeric edges',
 					qualificationDefinition('numeric-edges-qualification', 'Numeric edges qualification', []),
@@ -898,7 +908,7 @@ describe('Program', () => {
 
 		it('sums a nested field path, keyed by its dot-joined name', () => {
 			const program = createProgram(
-				programDefinition(
+				buildProgramDefinition(
 					'nested-field',
 					'Nested field',
 					qualificationDefinition('nested-field-qualification', 'Nested field qualification', []),
@@ -919,7 +929,7 @@ describe('Program', () => {
 	describe('group-key semantics', () => {
 		it('collapses a missing field and an empty-string field into one group', () => {
 			const program = createProgram(
-				programDefinition(
+				buildProgramDefinition(
 					'group-semantics',
 					'Group semantics',
 					qualificationDefinition(
@@ -943,7 +953,7 @@ describe('Program', () => {
 
 		it('collides numeric and string partition keys', () => {
 			const program = createProgram(
-				programDefinition(
+				buildProgramDefinition(
 					'group-collide',
 					'Group collide',
 					qualificationDefinition('group-collide-qualification', 'Group collide qualification', []),
@@ -993,16 +1003,16 @@ describe('Program', () => {
 
 	describe('empty batch with gates', () => {
 		it('still runs gates against a zero-count batch', () => {
-			const gates = logicalDefinition('empty-batch-gates', 'Empty batch gates', [
-				rule(
+			const gates = createLogicalDefinition('empty-batch-gates', 'Empty batch gates', [
+				createRule(
 					'empty-cap',
-					[atom(['aggregate', 'count'], 'below', 1)],
-					atom('limited', 'equals', true),
+					[createAtom(['aggregate', 'count'], 'below', 1)],
+					createAtom('limited', 'equals', true),
 					{ description: 'Empty batch flagged' },
 				),
 			])
 			const program = createProgram(
-				programDefinition(
+				buildProgramDefinition(
 					'empty-batch',
 					'Empty batch',
 					qualificationDefinition('empty-batch-qualification', 'Empty batch qualification', []),
@@ -1042,7 +1052,7 @@ describe('Program', () => {
 		it('fires destroy once and leaves the injected engine unused and usable', () => {
 			const engine = createRecordingEngine()
 			const destroyed = createRecorder<readonly []>()
-			const definition = programDefinition('', '', standardQualification, standardRating)
+			const definition = buildProgramDefinition('', '', standardQualification, standardRating)
 			let error: unknown
 			try {
 				createProgram(definition, { engine, on: { destroy: destroyed.handler } })

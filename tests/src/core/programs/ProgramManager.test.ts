@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createProgramManager, programDefinition } from '@src/core'
+import { createProgramManager, buildProgramDefinition } from '@src/core'
 import { createQualifier } from '@orkestrel/qualifier'
 import { createRater } from '@orkestrel/rater'
 import { createLogicalReasoner, createQuantitativeReasoner, createReason } from '@orkestrel/reason'
@@ -12,10 +12,10 @@ import {
 } from '../../../setup.js'
 import { qualificationDefinition } from '@orkestrel/qualifier'
 import { rulingDefinition } from '@orkestrel/qualifier'
-import { logicalDefinition, rule, atom } from '@orkestrel/reason'
+import { createLogicalDefinition, createRule, createAtom } from '@orkestrel/reason'
 
 function buildDefinition(id: string) {
-	return programDefinition(id, `Program ${id}`, standardQualification, standardRating)
+	return buildProgramDefinition(id, `Program ${id}`, standardQualification, standardRating)
 }
 
 describe('ProgramManager', () => {
@@ -55,7 +55,7 @@ describe('ProgramManager', () => {
 			const manager = createProgramManager()
 			let error: unknown
 			try {
-				manager.add(programDefinition('', '', standardQualification, standardRating))
+				manager.add(buildProgramDefinition('', '', standardQualification, standardRating))
 				expect.unreachable('expected DEFINITION')
 			} catch (caught) {
 				error = caught
@@ -70,10 +70,14 @@ describe('ProgramManager', () => {
 			expect(manager.add(extra).id).toBe('standard')
 			manager.destroy()
 
-			const gates = logicalDefinition('gates', 'Gates', [
-				rule('always', [atom('id', 'equals', 'x')], atom('blocked', 'equals', true)),
+			const gates = createLogicalDefinition('gates', 'Gates', [
+				createRule(
+					'always',
+					[createAtom('id', 'equals', 'x')],
+					createAtom('blocked', 'equals', true),
+				),
 			])
-			const missing = programDefinition(
+			const missing = buildProgramDefinition(
 				'missing',
 				'Missing',
 				qualificationDefinition('q', 'Q', [gates], {

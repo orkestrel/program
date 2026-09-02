@@ -15,18 +15,18 @@ import type { ProgramDefinition, ProgramEventMap, ProgramInterface } from '@src/
 import { createQualifier, qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
 import { createRater, isRatingDefinition, lineDefinition, ratingDefinition } from '@orkestrel/rater'
 import {
-	atom,
+	createAtom,
 	createLogicalReasoner,
 	createQuantitativeReasoner,
 	createReason,
-	factorGroup,
-	fieldFactor,
-	logicalDefinition,
-	quantitativeDefinition,
-	rule,
-	staticFactor,
+	createFactorGroup,
+	createFieldFactor,
+	createLogicalDefinition,
+	createQuantitativeDefinition,
+	createRule,
+	createStaticFactor,
 } from '@orkestrel/reason'
-import { aggregateDefinition, noticeDefinition, programDefinition } from '@src/core'
+import { buildAggregateDefinition, buildNotice, buildProgramDefinition } from '@src/core'
 
 class FixedReason implements ReasonInterface {
 	readonly #inner: ReasonInterface
@@ -511,12 +511,16 @@ export function recordEvents(program: ProgramInterface): EventRecorderInterface 
 	}
 }
 
-const licensedGates = logicalDefinition('gates', 'Eligibility gates', [
-	rule('licensed', [atom('licensed', 'equals', false)], atom('blocked', 'equals', true)),
+const licensedGates = createLogicalDefinition('gates', 'Eligibility gates', [
+	createRule(
+		'licensed',
+		[createAtom('licensed', 'equals', false)],
+		createAtom('blocked', 'equals', true),
+	),
 ])
 
-export const baseRate = quantitativeDefinition('base-rate', 'Base rate', [
-	factorGroup('amount', 'sum', [staticFactor('minimum', 100)]),
+export const baseRate = createQuantitativeDefinition('base-rate', 'Base rate', [
+	createFactorGroup('amount', 'sum', [createStaticFactor('minimum', 100)]),
 ])
 
 export const baseLine = lineDefinition('base', 'Base premium', baseRate)
@@ -536,7 +540,7 @@ export const standardQualification = qualificationDefinition(
 	},
 )
 
-export const standardProgramDefinition = programDefinition(
+export const standardProgramDefinition = buildProgramDefinition(
 	'standard',
 	'Standard program',
 	standardQualification,
@@ -560,7 +564,7 @@ const referralQualification = qualificationDefinition(
 	},
 )
 
-export const referralProgramDefinition = programDefinition(
+export const referralProgramDefinition = buildProgramDefinition(
 	'referral',
 	'Referral program',
 	referralQualification,
@@ -569,19 +573,23 @@ export const referralProgramDefinition = programDefinition(
 
 export const referralSubject: Subject = { id: 'risk-referral', licensed: false }
 
-const windGates = logicalDefinition('wind-gates', 'Wind gates', [
-	rule('frame', [atom('construction', 'equals', 'Frame')], atom('frame', 'equals', true)),
+const windGates = createLogicalDefinition('wind-gates', 'Wind gates', [
+	createRule(
+		'frame',
+		[createAtom('construction', 'equals', 'Frame')],
+		createAtom('frame', 'equals', true),
+	),
 ])
 
-const windRate = quantitativeDefinition('wind-rate', 'Wind rate', [
-	factorGroup('wind', 'sum', [staticFactor('flat', 50)]),
+const windRate = createQuantitativeDefinition('wind-rate', 'Wind rate', [
+	createFactorGroup('wind', 'sum', [createStaticFactor('flat', 50)]),
 ])
 
-const exWindRate = quantitativeDefinition('ex-wind-rate', 'Ex-wind rate', [
-	factorGroup('ex-wind', 'sum', [staticFactor('flat', 75)]),
+const exWindRate = createQuantitativeDefinition('ex-wind-rate', 'Ex-wind rate', [
+	createFactorGroup('ex-wind', 'sum', [createStaticFactor('flat', 75)]),
 ])
 
-export const scopedProgramDefinition = programDefinition(
+export const scopedProgramDefinition = buildProgramDefinition(
 	'property',
 	'Property program',
 	qualificationDefinition('property-qualification', 'Property qualification', [windGates], {
@@ -600,25 +608,35 @@ export const scopedProgramDefinition = programDefinition(
 
 export const frameSubject: Subject = { id: 'risk-frame', construction: 'Frame' }
 
-const coastalGates = logicalDefinition('coastal-gates', 'Coastal gates', [
-	rule('coastal', [atom('location', 'equals', 'coastal')], atom('coastal', 'equals', true)),
+const coastalGates = createLogicalDefinition('coastal-gates', 'Coastal gates', [
+	createRule(
+		'coastal',
+		[createAtom('location', 'equals', 'coastal')],
+		createAtom('coastal', 'equals', true),
+	),
 ])
 
 export const coastalReferralSubject: Subject = { id: 'risk-coastal', location: 'coastal' }
 
-const failingPass = quantitativeDefinition('failing-pass', 'Failing pass', [
-	factorGroup('g', 'sum', [fieldFactor('req', ['missing'], { required: true })], { strict: true }),
+const failingPass = createQuantitativeDefinition('failing-pass', 'Failing pass', [
+	createFactorGroup('g', 'sum', [createFieldFactor('req', ['missing'], { required: true })], {
+		strict: true,
+	}),
 ])
 
-export const failedQualificationProgramDefinition = programDefinition(
+export const failedQualificationProgramDefinition = buildProgramDefinition(
 	'failed-qualification',
 	'Failed qualification program',
 	qualificationDefinition('failed-qualification', 'Failed qualification', [failingPass]),
 	standardRating,
 )
 
-const conditionalGates = logicalDefinition('conditional-gates', 'Conditional gates', [
-	rule('present', [atom('id', 'equals', 'risk-conditional')], atom('flag', 'equals', true)),
+const conditionalGates = createLogicalDefinition('conditional-gates', 'Conditional gates', [
+	createRule(
+		'present',
+		[createAtom('id', 'equals', 'risk-conditional')],
+		createAtom('flag', 'equals', true),
+	),
 ])
 
 const conditionalQualification = qualificationDefinition(
@@ -634,7 +652,7 @@ const conditionalQualification = qualificationDefinition(
 	},
 )
 
-export const conditionalProgramDefinition = programDefinition(
+export const conditionalProgramDefinition = buildProgramDefinition(
 	'conditional',
 	'Conditional program',
 	conditionalQualification,
@@ -643,32 +661,32 @@ export const conditionalProgramDefinition = programDefinition(
 
 export const conditionalSubject: Subject = { id: 'risk-conditional' }
 
-export const emptyLinesProgramDefinition = programDefinition(
+export const emptyLinesProgramDefinition = buildProgramDefinition(
 	'empty-lines',
 	'Empty lines program',
 	qualificationDefinition('empty-qualification', 'Empty qualification', []),
 	ratingDefinition('empty-rating', 'Empty rating', []),
 )
 
-export const emptyCollectionsProgramDefinition = programDefinition(
+export const emptyCollectionsProgramDefinition = buildProgramDefinition(
 	'empty-collections',
 	'Empty collections program',
 	qualificationDefinition('bare-qualification', 'Bare qualification', []),
 	standardRating,
 )
 
-export const noticeProgramDefinition = programDefinition(
+export const noticeProgramDefinition = buildProgramDefinition(
 	'noticed',
 	'Noticed program',
 	standardQualification,
 	standardRating,
 	{
-		notices: [noticeDefinition('rated', 'Program {{id}} executed for {{licensed}}')],
+		notices: [buildNotice('rated', 'Program {{id}} executed for {{licensed}}')],
 	},
 )
 
 export function buildAuthorityProgram(authority: LogicalDefinition): ProgramDefinition {
-	return programDefinition(
+	return buildProgramDefinition(
 		'authority',
 		'Authority program',
 		standardQualification,
@@ -679,11 +697,11 @@ export function buildAuthorityProgram(authority: LogicalDefinition): ProgramDefi
 	)
 }
 
-export const conditionalAuthority = logicalDefinition('authority', 'Final authority', [
-	rule(
+export const conditionalAuthority = createLogicalDefinition('authority', 'Final authority', [
+	createRule(
 		'manual',
-		[atom(['outcome', 'status'], 'equals', 'conditional')],
-		atom('limited', 'equals', true),
+		[createAtom(['outcome', 'status'], 'equals', 'conditional')],
+		createAtom('limited', 'equals', true),
 		{
 			name: 'Manual authority required',
 			description: 'Conditional outcomes require manual authority',
@@ -691,11 +709,15 @@ export const conditionalAuthority = logicalDefinition('authority', 'Final author
 	),
 ])
 
-export const cleanAuthority = logicalDefinition('authority', 'Clean authority', [
-	rule('never', [atom('blocked', 'equals', true)], atom('limited', 'equals', true)),
+export const cleanAuthority = createLogicalDefinition('authority', 'Clean authority', [
+	createRule(
+		'never',
+		[createAtom('blocked', 'equals', true)],
+		createAtom('limited', 'equals', true),
+	),
 ])
 
-export const scopedReferralProgramDefinition = programDefinition(
+export const scopedReferralProgramDefinition = buildProgramDefinition(
 	'scoped-referral',
 	'Scoped referral program',
 	qualificationDefinition(
@@ -718,22 +740,22 @@ export const scopedReferralProgramDefinition = programDefinition(
 	{ authority: cleanAuthority },
 )
 
-export const unratedAuthority = logicalDefinition('authority', 'Unrated authority', [
-	rule(
+export const unratedAuthority = createLogicalDefinition('authority', 'Unrated authority', [
+	createRule(
 		'unrated-cap',
-		[atom(['outcome', 'status'], 'equals', 'unrated')],
-		atom('limited', 'equals', true),
+		[createAtom(['outcome', 'status'], 'equals', 'unrated')],
+		createAtom('limited', 'equals', true),
 		{ description: 'Unrated outcomes require manual review' },
 	),
 ])
 
-export const batchAggregateProgramDefinition = programDefinition(
+export const batchAggregateProgramDefinition = buildProgramDefinition(
 	'batch',
 	'Batch program',
 	standardQualification,
 	standardRating,
 	{
-		aggregate: aggregateDefinition(['amount'], { by: 'location' }),
+		aggregate: buildAggregateDefinition(['amount'], { by: 'location' }),
 	},
 )
 
@@ -744,32 +766,36 @@ export const batchSubjects: Subject[] = [
 ]
 
 export function buildAggregateGateProgram(threshold: number): ProgramDefinition {
-	const gates = logicalDefinition('batch-gates', 'Batch gates', [
-		rule(
+	const gates = createLogicalDefinition('batch-gates', 'Batch gates', [
+		createRule(
 			'portfolio-cap',
-			[atom(['aggregate', 'sums', 'amount'], 'above', threshold)],
-			atom('limited', 'equals', true),
+			[createAtom(['aggregate', 'sums', 'amount'], 'above', threshold)],
+			createAtom('limited', 'equals', true),
 			{ description: 'Portfolio cap exceeded' },
 		),
 	])
-	return programDefinition(
+	return buildProgramDefinition(
 		'aggregate-gate',
 		'Aggregate gate program',
 		standardQualification,
 		standardRating,
 		{
-			aggregate: aggregateDefinition(['amount'], { gates }),
+			aggregate: buildAggregateDefinition(['amount'], { gates }),
 		},
 	)
 }
 
 export function buildCarrierProgram(): ProgramDefinition {
-	const gates = logicalDefinition('carrier-gates', 'Carrier gates', [
-		rule('licensed', [atom('licensed', 'equals', false)], atom('blocked', 'equals', true)),
+	const gates = createLogicalDefinition('carrier-gates', 'Carrier gates', [
+		createRule(
+			'licensed',
+			[createAtom('licensed', 'equals', false)],
+			createAtom('blocked', 'equals', true),
+		),
 	])
 
-	const amountRate = quantitativeDefinition('amount-rate', 'Amount rate', [
-		factorGroup('amount', 'sum', [staticFactor('flat', 10)]),
+	const amountRate = createQuantitativeDefinition('amount-rate', 'Amount rate', [
+		createFactorGroup('amount', 'sum', [createStaticFactor('flat', 10)]),
 	])
 
 	const qualification = qualificationDefinition(
@@ -789,8 +815,8 @@ export function buildCarrierProgram(): ProgramDefinition {
 		lineDefinition('premium', 'Premium', amountRate),
 	])
 
-	return programDefinition('carrier', 'Carrier program', qualification, rating, {
-		notices: [noticeDefinition('audit', 'Carrier audit for {{id}}')],
+	return buildProgramDefinition('carrier', 'Carrier program', qualification, rating, {
+		notices: [buildNotice('audit', 'Carrier audit for {{id}}')],
 		authority: cleanAuthority,
 	})
 }
@@ -819,8 +845,8 @@ export function createQuantOnlyEngine(options?: ReasonOptions): ReasonInterface 
  * failure.
  */
 export function buildBrokenLogicalDefinition(id: string): LogicalDefinition {
-	return logicalDefinition(id, 'Broken definition', [
-		rule(`${id}-rule`, [], atom('limited', 'equals', true)),
+	return createLogicalDefinition(id, 'Broken definition', [
+		createRule(`${id}-rule`, [], createAtom('limited', 'equals', true)),
 	])
 }
 
@@ -830,19 +856,19 @@ export const zeroPassQualification = qualificationDefinition(
 	[],
 )
 
-export const brokenAggregateGateProgramDefinition = programDefinition(
+export const brokenAggregateGateProgramDefinition = buildProgramDefinition(
 	'broken-aggregate-gate',
 	'Broken aggregate gate program',
 	zeroPassQualification,
 	undefined,
 	{
-		aggregate: aggregateDefinition(['amount'], {
+		aggregate: buildAggregateDefinition(['amount'], {
 			gates: buildBrokenLogicalDefinition('broken-aggregate-gates'),
 		}),
 	},
 )
 
-export const brokenAuthorityProgramDefinition = programDefinition(
+export const brokenAuthorityProgramDefinition = buildProgramDefinition(
 	'broken-authority',
 	'Broken authority program',
 	zeroPassQualification,
@@ -851,28 +877,28 @@ export const brokenAuthorityProgramDefinition = programDefinition(
 )
 
 /** An eligibility-only definition (no `rating`) reusing the standard qualification. */
-export const eligibilityOnlyProgramDefinition = programDefinition(
+export const eligibilityOnlyProgramDefinition = buildProgramDefinition(
 	'eligibility-only',
 	'Eligibility-only program',
 	standardQualification,
 )
 
 /** An eligibility-only definition reusing the conditional qualification. */
-export const eligibilityOnlyConditionalProgramDefinition = programDefinition(
+export const eligibilityOnlyConditionalProgramDefinition = buildProgramDefinition(
 	'eligibility-only-conditional',
 	'Eligibility-only conditional program',
 	conditionalProgramDefinition.qualification,
 )
 
 /** An eligibility-only definition reusing the referral qualification. */
-export const eligibilityOnlyReferralProgramDefinition = programDefinition(
+export const eligibilityOnlyReferralProgramDefinition = buildProgramDefinition(
 	'eligibility-only-referral',
 	'Eligibility-only referral program',
 	referralProgramDefinition.qualification,
 )
 
 /** An eligibility-only definition with a clean authority. */
-export const eligibilityOnlyWithAuthorityProgramDefinition = programDefinition(
+export const eligibilityOnlyWithAuthorityProgramDefinition = buildProgramDefinition(
 	'eligibility-only-authority',
 	'Eligibility-only authority program',
 	standardQualification,
@@ -882,19 +908,19 @@ export const eligibilityOnlyWithAuthorityProgramDefinition = programDefinition(
 
 /** An eligibility-only definition with a notice scoped to a non-existent rating line. */
 export function buildEligibilityOnlyNoticeMissingScopeDefinition(): ProgramDefinition {
-	return programDefinition(
+	return buildProgramDefinition(
 		'eligibility-only-notice-missing',
 		'Eligibility-only notice missing scope program',
 		standardQualification,
 		undefined,
-		{ notices: [noticeDefinition('scoped', 'Scoped notice', { scope: 'base' })] },
+		{ notices: [buildNotice('scoped', 'Scoped notice', { scope: 'base' })] },
 	)
 }
 
 export const eligibilityOnlyBatchSubjects: Subject[] = [eligibleSubject, ineligibleSubject]
 
 /** A program failing qualification (referral) with a clean authority attached. */
-export const failedQualificationWithAuthorityProgramDefinition = programDefinition(
+export const failedQualificationWithAuthorityProgramDefinition = buildProgramDefinition(
 	failedQualificationProgramDefinition.id,
 	failedQualificationProgramDefinition.name,
 	failedQualificationProgramDefinition.qualification,
@@ -902,11 +928,15 @@ export const failedQualificationWithAuthorityProgramDefinition = programDefiniti
 	{ authority: cleanAuthority },
 )
 
-const allScopedGates = logicalDefinition('all-scoped-gates', 'All scoped gates', [
-	rule('frame', [atom('construction', 'equals', 'Frame')], atom('frame', 'equals', true)),
+const allScopedGates = createLogicalDefinition('all-scoped-gates', 'All scoped gates', [
+	createRule(
+		'frame',
+		[createAtom('construction', 'equals', 'Frame')],
+		createAtom('frame', 'equals', true),
+	),
 ])
 
-export const allLinesScopedOutProgramDefinition = programDefinition(
+export const allLinesScopedOutProgramDefinition = buildProgramDefinition(
 	'all-scoped',
 	'All lines scoped out program',
 	qualificationDefinition(

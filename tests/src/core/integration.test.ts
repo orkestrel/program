@@ -171,7 +171,7 @@ describe('integration', () => {
 		it('still exports the program surface', () => {
 			expect('createProgram' in barrel).toBe(true)
 			expect('createProgramManager' in barrel).toBe(true)
-			expect('programDefinition' in barrel).toBe(true)
+			expect('buildProgramDefinition' in barrel).toBe(true)
 		})
 	})
 })

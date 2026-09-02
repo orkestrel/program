@@ -27,20 +27,24 @@ npm install @orkestrel/program
 ## Usage
 
 ```ts
-import { createProgram, programDefinition } from '@orkestrel/program'
+import { buildProgramDefinition, createProgram } from '@orkestrel/program'
 import { qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
 import { lineDefinition, ratingDefinition } from '@orkestrel/rater'
 import {
-	atom,
-	factorGroup,
-	logicalDefinition,
-	quantitativeDefinition,
-	rule,
-	staticFactor,
+	createAtom,
+	createFactorGroup,
+	createLogicalDefinition,
+	createQuantitativeDefinition,
+	createRule,
+	createStaticFactor,
 } from '@orkestrel/reason'
 
-const gates = logicalDefinition('gates', 'Eligibility gates', [
-	rule('licensed', [atom('licensed', 'equals', false)], atom('blocked', 'equals', true)),
+const gates = createLogicalDefinition('gates', 'Eligibility gates', [
+	createRule(
+		'licensed',
+		[createAtom('licensed', 'equals', false)],
+		createAtom('blocked', 'equals', true),
+	),
 ])
 
 const qualification = qualificationDefinition(
@@ -59,14 +63,14 @@ const qualification = qualificationDefinition(
 const base = lineDefinition(
 	'base',
 	'Base premium',
-	quantitativeDefinition('base-rate', 'Base rate', [
-		factorGroup('amount', 'sum', [staticFactor('minimum', 100)]),
+	createQuantitativeDefinition('base-rate', 'Base rate', [
+		createFactorGroup('amount', 'sum', [createStaticFactor('minimum', 100)]),
 	]),
 )
 
 const rating = ratingDefinition('standard-rating', 'Standard rating', [base])
 
-const definition = programDefinition('standard', 'Standard program', qualification, rating)
+const definition = buildProgramDefinition('standard', 'Standard program', qualification, rating)
 
 const program = createProgram(definition)
 

@@ -34,20 +34,24 @@
 Create a program, execute one subject, and inspect the nested results:
 
 ```ts
-import { createProgram, programDefinition } from '@orkestrel/program'
+import { buildProgramDefinition, createProgram } from '@orkestrel/program'
 import { qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
 import { lineDefinition, ratingDefinition } from '@orkestrel/rater'
 import {
-	atom,
-	factorGroup,
-	logicalDefinition,
-	quantitativeDefinition,
-	rule,
-	staticFactor,
+	createAtom,
+	createFactorGroup,
+	createLogicalDefinition,
+	createQuantitativeDefinition,
+	createRule,
+	createStaticFactor,
 } from '@orkestrel/reason'
 
-const gates = logicalDefinition('gates', 'Eligibility gates', [
-	rule('licensed', [atom('licensed', 'equals', false)], atom('blocked', 'equals', true)),
+const gates = createLogicalDefinition('gates', 'Eligibility gates', [
+	createRule(
+		'licensed',
+		[createAtom('licensed', 'equals', false)],
+		createAtom('blocked', 'equals', true),
+	),
 ])
 
 const qualification = qualificationDefinition(
@@ -66,13 +70,13 @@ const qualification = qualificationDefinition(
 const base = lineDefinition(
 	'base',
 	'Base premium',
-	quantitativeDefinition('base-rate', 'Base rate', [
-		factorGroup('amount', 'sum', [staticFactor('minimum', 100)]),
+	createQuantitativeDefinition('base-rate', 'Base rate', [
+		createFactorGroup('amount', 'sum', [createStaticFactor('minimum', 100)]),
 	]),
 )
 
 const rating = ratingDefinition('standard-rating', 'Standard rating', [base])
-const definition = programDefinition('standard', 'Standard program', qualification, rating)
+const definition = buildProgramDefinition('standard', 'Standard program', qualification, rating)
 const program = createProgram(definition)
 
 const eligible = program.execute({ id: 'risk-1', licensed: true })
@@ -127,8 +131,8 @@ manager.destroy()
 | `ProgramEffect`           | type      | `'notice' \| 'limit'` — post-qualification program determinations.                                                                             |
 | `ProgramErrorCode`        | type      | `'DUPLICATE' \| 'MISSING' \| 'DEFINITION' \| 'MISMATCH' \| 'RESERVED' \| 'DESTROYED'`.                                                         |
 | `ProgramInput`            | interface | `{ description?, notices?, authority?, aggregate?, metadata? }`.                                                                               |
-| `NoticeInput`             | interface | `{ scope? }` — optional fields accepted by `noticeDefinition`.                                                                                 |
-| `AggregateInput`          | interface | `{ by?, gates? }` — optional fields accepted by `aggregateDefinition`.                                                                         |
+| `NoticeInput`             | interface | `{ scope? }` — optional fields accepted by `buildNotice`.                                                                                      |
+| `AggregateInput`          | interface | `{ by?, gates? }` — optional fields accepted by `buildAggregateDefinition`.                                                                    |
 | `Notice`                  | interface | `{ id, message, scope? }` — an authored unconditional program notice.                                                                          |
 | `Determination`           | interface | `{ id, effect, applied, scope?, message?, premises }` — one notice or authority limit.                                                         |
 | `AggregateDefinition`     | interface | `{ fields, by?, gates? }` — batch sums (`FieldPath`s), optional partition field, optional gates.                                               |
@@ -279,7 +283,6 @@ never destroyed — it holds no state to tear down) purely to drive that reuse.
 
 | API                         | Kind     | Summary                                                                                                                                         |
 | --------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `copyJSONValue`             | function | Deep-clone a `JSONValue` into a fresh tree that shares no reference with the input — used for defensive metadata copies.                        |
 | `selectProgramLines`        | function | Select rating-line ids from scoped qualification eligibility.                                                                                   |
 | `deriveStatus`              | function | Derive final status from a program definition's rating policy plus qualification and rating evidence.                                           |
 | `decideEligibility`         | function | Map global eligibility to its deterministic decision.                                                                                           |
@@ -299,14 +302,14 @@ never destroyed — it holds no state to tear down) purely to drive that reuse.
 | `aggregateGroups`           | function | Partition subjects and sum fields per key.                                                                                                      |
 | `buildAggregateProjection`  | function | Build one subject's overall and optional group aggregate context.                                                                               |
 | `buildAggregateRecord`      | function | Build the reserved aggregate-gate subject.                                                                                                      |
-| `emptySums`                 | function | Build a zero record for configured fields.                                                                                                      |
-| `emptyTallies`              | function | Build complete zero tallies in status order.                                                                                                    |
+| `buildEmptySums`            | function | Build a zero record for configured fields.                                                                                                      |
+| `buildEmptyTallies`         | function | Build complete zero tallies in status order.                                                                                                    |
 | `completeTallies`           | function | Fill missing statuses in a partial tally record.                                                                                                |
 | `tallyProgram`              | function | Add one subject and its fields to the result-status tally.                                                                                      |
 | `buildAggregateResult`      | function | Assemble one batch result, folding an optional aggregate-gate evaluation's `trace`/`errors` in and requiring it error-free for `success`.       |
-| `programDefinition`         | function | Build a fresh `ProgramDefinition`, copying every collection and omitting absent optional keys.                                                  |
-| `noticeDefinition`          | function | Build a fresh `Notice`, omitting an absent scope.                                                                                               |
-| `aggregateDefinition`       | function | Build a fresh `AggregateDefinition`, copying the fields and omitting absent optional keys.                                                      |
+| `buildProgramDefinition`    | function | Build a fresh `ProgramDefinition`, copying every collection and omitting absent optional keys.                                                  |
+| `buildNotice`               | function | Build a fresh `Notice`, omitting an absent scope.                                                                                               |
+| `buildAggregateDefinition`  | function | Build a fresh `AggregateDefinition`, copying the fields and omitting absent optional keys.                                                      |
 
 The per-subject orchestration leaves guard the subject, select surviving lines, and
 map eligibility to a decision:
@@ -327,15 +330,13 @@ selectProgramLines(lines, { wind: 'ineligible' }) // every line except the 'wind
 decideEligibility('eligible') // 'approved'
 ```
 
-The batch leaves sum configured fields, partition subjects, seed zero records, and
-deep-copy metadata:
+The batch leaves sum configured fields, partition subjects, and seed zero records:
 
 ```ts
 import {
 	aggregateGroups,
 	aggregateSums,
-	copyJSONValue,
-	emptySums,
+	buildEmptySums,
 	formatGroupKey,
 	sumFields,
 } from '@orkestrel/program'
@@ -350,20 +351,19 @@ aggregateSums(subjects, ['total']) // { total: 350 }
 aggregateGroups(subjects, ['total'], 'location') // [{ key: 'west', count: 2, sums: { total: 300 } }, { key: 'east', count: 1, sums: { total: 50 } }]
 formatGroupKey({ location: 'west' }, 'location') // 'west' — String-coerced, so a missing field and '' land in the same partition
 sumFields({ total: 0 }, subjects[0], ['total']) // { total: 100 } — a fresh record, only finite numbers contribute
-emptySums(['total']) // { total: 0 }
-copyJSONValue({ tier: 'gold', flags: [1, 2] }) // a fresh clone that shares no reference with the input
+buildEmptySums(['total']) // { total: 0 }
 ```
 
 The definition leaves build the authored program values. Each returns a fresh value,
 copies collections, and omits absent optional keys entirely:
 
 ```ts
-import { aggregateDefinition, noticeDefinition, programDefinition } from '@orkestrel/program'
+import { buildAggregateDefinition, buildNotice, buildProgramDefinition } from '@orkestrel/program'
 
-const aggregate = aggregateDefinition(['amount'], { by: 'location' })
-const notice = noticeDefinition('audit', 'Program {{program}} executed')
+const aggregate = buildAggregateDefinition(['amount'], { by: 'location' })
+const notice = buildNotice('audit', 'Program {{program}} executed')
 
-const definition = programDefinition('standard', 'Standard', qualification, rating, {
+const definition = buildProgramDefinition('standard', 'Standard', qualification, rating, {
 	notices: [notice],
 	aggregate,
 })
@@ -380,9 +380,9 @@ The factories compile entities. The authored definitions they compile are plain
 values, so their builders are helper leaves rather than factories.
 
 ```ts
-import { createProgram, createProgramManager, programDefinition } from '@orkestrel/program'
+import { buildProgramDefinition, createProgram, createProgramManager } from '@orkestrel/program'
 
-const definition = programDefinition('standard', 'Standard', qualification, rating)
+const definition = buildProgramDefinition('standard', 'Standard', qualification, rating)
 
 const program = createProgram(definition)
 const manager = createProgramManager({ programs: [definition] })
@@ -751,7 +751,7 @@ No quantitative reasoner call occurs.
 ### Eligibility-only
 
 ```ts
-const definition = programDefinition('gate-only', 'Gate only', qualification)
+const definition = buildProgramDefinition('gate-only', 'Gate only', qualification)
 const program = createProgram(definition)
 
 const result = program.execute({ id: 'risk-1', licensed: true })
@@ -768,7 +768,7 @@ the workflow entirely.
 
 ```ts
 const qualification = qualificationDefinition('all', 'All risks', [])
-const definition = programDefinition('rate-only', 'Rate only', qualification, rating)
+const definition = buildProgramDefinition('rate-only', 'Rate only', qualification, rating)
 const program = createProgram(definition)
 
 const result = program.execute({ id: 'risk-1' })
@@ -803,7 +803,7 @@ const rating = ratingDefinition('property-rating', 'Property rating', [
 ])
 
 const result = createProgram(
-	programDefinition('property', 'Property', qualification, rating),
+	buildProgramDefinition('property', 'Property', qualification, rating),
 ).execute({
 	id: 'risk-1',
 	construction: 'Frame',
@@ -839,9 +839,9 @@ All eligible lines rate. The result becomes `conditional`.
 ### Notices
 
 ```ts
-const notice = noticeDefinition('minimum', 'Minimum earned premium applies')
+const notice = buildNotice('minimum', 'Minimum earned premium applies')
 
-const definition = programDefinition('standard', 'Standard', qualification, rating, {
+const definition = buildProgramDefinition('standard', 'Standard', qualification, rating, {
 	notices: [notice],
 })
 ```
@@ -849,11 +849,11 @@ const definition = programDefinition('standard', 'Standard', qualification, rati
 ### Authority
 
 ```ts
-const authority = logicalDefinition('authority', 'Final authority', [
-	rule(
+const authority = createLogicalDefinition('authority', 'Final authority', [
+	createRule(
 		'manual',
-		[atom(['outcome', 'status'], 'equals', 'conditional')],
-		atom('limited', 'equals', true),
+		[createAtom(['outcome', 'status'], 'equals', 'conditional')],
+		createAtom('limited', 'equals', true),
 		{
 			name: 'Manual authority required',
 			description: 'Conditional outcomes require manual authority',
@@ -861,7 +861,9 @@ const authority = logicalDefinition('authority', 'Final authority', [
 	),
 ])
 
-const definition = programDefinition('standard', 'Standard', qualification, rating, { authority })
+const definition = buildProgramDefinition('standard', 'Standard', qualification, rating, {
+	authority,
+})
 ```
 
 A conditional result receives a `limit` determination and no decision.
@@ -869,17 +871,17 @@ A conditional result receives a `limit` determination and no decision.
 ### Aggregate qualification
 
 ```ts
-const aggregate = aggregateDefinition(['total'], { by: 'location' })
+const aggregate = buildAggregateDefinition(['total'], { by: 'location' })
 
 const qualification = qualificationDefinition(
 	'portfolio-qualification',
 	'Portfolio qualification',
 	[
-		logicalDefinition('aggregate-gates', 'Aggregate gates', [
-			rule(
+		createLogicalDefinition('aggregate-gates', 'Aggregate gates', [
+			createRule(
 				'location-cap',
-				[atom(['aggregate', 'group', 'sums', 'total'], 'above', 5_000_000)],
-				atom('blocked', 'equals', true),
+				[createAtom(['aggregate', 'group', 'sums', 'total'], 'above', 5_000_000)],
+				createAtom('blocked', 'equals', true),
 			),
 		]),
 	],
@@ -899,15 +901,15 @@ the original subject.
 ### Aggregate gates
 
 ```ts
-const gates = logicalDefinition('batch-gates', 'Batch gates', [
-	rule(
+const gates = createLogicalDefinition('batch-gates', 'Batch gates', [
+	createRule(
 		'portfolio-cap',
-		[atom(['aggregate', 'sums', 'total'], 'above', 20_000_000)],
-		atom('limited', 'equals', true),
+		[createAtom(['aggregate', 'sums', 'total'], 'above', 20_000_000)],
+		createAtom('limited', 'equals', true),
 	),
 ])
 
-const aggregate = aggregateDefinition(['total'], { gates })
+const aggregate = buildAggregateDefinition(['total'], { gates })
 ```
 
 These gates create batch determinations. They do not retroactively change individual
