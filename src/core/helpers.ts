@@ -941,8 +941,11 @@ export function buildAggregateResult(
  * Builds a fresh {@link ProgramDefinition}.
  *
  * @remarks
- * Copies every collection and omits absent optional keys, so the returned
- * definition is a fresh, JSON-serializable value that never aliases its inputs.
+ * Omits absent optional keys. `metadata` is deep-copied with `structuredClone`.
+ * `notices` is copied as a fresh array whose elements are shared with the
+ * input. `qualification`, `rating`, `authority`, and `aggregate` are stored
+ * by reference. The {@link Program} constructor later snapshots and seals
+ * the whole graph.
  *
  * @param id - The program id
  * @param name - The display name

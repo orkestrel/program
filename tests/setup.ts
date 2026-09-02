@@ -6,9 +6,9 @@ import type {
 	LogicalResult,
 	ReasonInterface,
 	ReasonOptions,
+	ReasonResult,
 	ReasonerInterface,
 	Reasoning,
-	ReasonResult,
 	Subject,
 } from '@orkestrel/reason'
 import type { ProgramDefinition, ProgramEventMap, ProgramInterface } from '@src/core'
@@ -16,13 +16,13 @@ import { createQualifier, qualificationDefinition, rulingDefinition } from '@ork
 import { createRater, isRatingDefinition, lineDefinition, ratingDefinition } from '@orkestrel/rater'
 import {
 	createAtom,
-	createLogicalReasoner,
-	createQuantitativeReasoner,
-	createReason,
 	createFactorGroup,
 	createFieldFactor,
 	createLogicalDefinition,
+	createLogicalReasoner,
 	createQuantitativeDefinition,
+	createQuantitativeReasoner,
+	createReason,
 	createRule,
 	createStaticFactor,
 } from '@orkestrel/reason'

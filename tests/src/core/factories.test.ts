@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { createProgram, createProgramManager, buildNotice, buildProgramDefinition } from '@src/core'
+import { buildNotice, buildProgramDefinition, createProgram, createProgramManager } from '@src/core'
 import { isProgramError } from '@src/core'
-import { rulingDefinition, qualificationDefinition } from '@orkestrel/qualifier'
+import { qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
 import { lineDefinition, ratingDefinition } from '@orkestrel/rater'
-import { createLogicalDefinition, createRule, createAtom } from '@orkestrel/reason'
+import { createAtom, createLogicalDefinition, createRule } from '@orkestrel/reason'
 import { baseLine, standardProgramDefinition, standardRating } from '../../setup.js'
 
 describe('factories', () => {

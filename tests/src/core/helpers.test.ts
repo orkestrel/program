@@ -19,12 +19,16 @@ import { isRecord } from '@orkestrel/contract'
 import {
 	AGGREGATE_KEY,
 	OUTCOME_KEY,
-	buildAggregateDefinition,
+	aggregateGroups,
+	aggregateSums,
 	assertProgramDefinition,
 	assertProgramSubject,
+	buildAggregateDefinition,
 	buildAggregateProjection,
 	buildAggregateRecord,
 	buildAggregateResult,
+	buildEmptySums,
+	buildEmptyTallies,
 	buildLimits,
 	buildNotices,
 	buildOutcomeProjection,
@@ -33,8 +37,6 @@ import {
 	completeTallies,
 	decideEligibility,
 	deriveStatus,
-	buildEmptySums,
-	buildEmptyTallies,
 	findMissingScopes,
 	formatGroupKey,
 	hasReservedKey,
@@ -42,20 +44,18 @@ import {
 	sumFields,
 	tallyProgram,
 	validateProgramDefinition,
-	aggregateGroups,
-	aggregateSums,
 } from '@src/core'
 import { createQualifier } from '@orkestrel/qualifier'
 import { createRater } from '@orkestrel/rater'
 import { lineDefinition, ratingDefinition } from '@orkestrel/rater'
 import {
+	createAtom,
 	createEvaluator,
+	createLogicalDefinition,
 	createLogicalReasoner,
 	createQuantitativeReasoner,
 	createReason,
-	createLogicalDefinition,
 	createRule,
-	createAtom,
 } from '@orkestrel/reason'
 import {
 	baseLine,
@@ -65,8 +65,8 @@ import {
 	createQuantOnlyEngine,
 	eligibilityOnlyConditionalProgramDefinition,
 	eligibilityOnlyProgramDefinition,
-	emptyLinesProgramDefinition,
 	eligibleSubject,
+	emptyLinesProgramDefinition,
 	noticeProgramDefinition,
 	standardProgramDefinition,
 	standardQualification,

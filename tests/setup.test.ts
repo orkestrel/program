@@ -21,7 +21,7 @@ import type { RatingDefinition, RatingResult } from '@orkestrel/rater'
 import type { ProgramDefinition, Status } from '@src/core'
 import { createQualifier, qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
 import { createRater } from '@orkestrel/rater'
-import { createLogicalReasoner, createLogicalDefinition } from '@orkestrel/reason'
+import { createLogicalDefinition, createLogicalReasoner } from '@orkestrel/reason'
 import { createProgram } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import {

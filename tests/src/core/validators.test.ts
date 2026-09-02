@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
 	buildAggregateDefinition,
-	createProgram,
 	buildEmptyTallies,
-	isAggregateGroup,
+	buildNotice,
+	buildProgramDefinition,
+	createProgram,
 	isAggregateDefinition,
+	isAggregateGroup,
 	isAggregateResult,
 	isDecision,
 	isDetermination,
@@ -17,8 +19,6 @@ import {
 	isStatus,
 	isTallies,
 	isTally,
-	buildNotice,
-	buildProgramDefinition,
 } from '@src/core'
 import {
 	baseLine,
@@ -33,7 +33,7 @@ import {
 import { createHostileValues } from '@orkestrel/test'
 import { qualificationDefinition } from '@orkestrel/qualifier'
 import { ratingDefinition } from '@orkestrel/rater'
-import { createLogicalDefinition, createRule, createAtom } from '@orkestrel/reason'
+import { createAtom, createLogicalDefinition, createRule } from '@orkestrel/reason'
 
 describe('validators', () => {
 	describe('isDecision', () => {

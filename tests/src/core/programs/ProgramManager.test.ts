@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createProgramManager, buildProgramDefinition } from '@src/core'
+import { buildProgramDefinition, createProgramManager } from '@src/core'
 import { createQualifier } from '@orkestrel/qualifier'
 import { createRater } from '@orkestrel/rater'
 import { createLogicalReasoner, createQuantitativeReasoner, createReason } from '@orkestrel/reason'
@@ -12,7 +12,7 @@ import {
 } from '../../../setup.js'
 import { qualificationDefinition } from '@orkestrel/qualifier'
 import { rulingDefinition } from '@orkestrel/qualifier'
-import { createLogicalDefinition, createRule, createAtom } from '@orkestrel/reason'
+import { createAtom, createLogicalDefinition, createRule } from '@orkestrel/reason'
 
 function buildDefinition(id: string) {
 	return buildProgramDefinition(id, `Program ${id}`, standardQualification, standardRating)
