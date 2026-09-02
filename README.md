@@ -106,7 +106,7 @@ one aggregate-aware batch and returns an `AggregateResult`. Every single-subject
 
 For the full surface — `Program`, `ProgramManager`, `ProgramResult`,
 `AggregateResult`, validators, factories, errors, and options — see
-[`guides/src/program.md`](guides/src/program.md).
+[`guides/program.md`](guides/program.md).
 
 ## Package
 
