@@ -48,8 +48,8 @@ import {
 } from '../helpers.js'
 
 /**
- * One compiled program — composes one qualifier and one rater over a shared
- * reason engine and executes single subjects or aggregate-aware batches.
+ * Composes one qualifier and one rater over a shared reason engine and executes
+ * single subjects or aggregate-aware batches.
  *
  * @remarks
  * Qualification decides whether rating happens: a globally ineligible, referred,

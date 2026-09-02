@@ -35,10 +35,10 @@ import { isFieldPath, isLogicalDefinition } from '@orkestrel/reason'
 import { STATUS_PRECEDENCE, STATUSES } from './constants.js'
 
 /**
- * Determine whether a value is a {@link Decision} literal.
+ * Determines whether a value is a {@link Decision} literal.
  *
  * @param value - The candidate value
- * @returns `true` when `value` is a {@link Decision}
+ * @returns True if `value` is a {@link Decision}; false otherwise
  *
  * @example
  * ```ts
@@ -50,10 +50,10 @@ import { STATUS_PRECEDENCE, STATUSES } from './constants.js'
 export const isDecision: Guard<Decision> = literalOf('approved', 'denied', 'submitted')
 
 /**
- * Determine whether a value is a {@link Status} literal.
+ * Determines whether a value is a {@link Status} literal.
  *
  * @param value - The candidate value
- * @returns `true` when `value` is a {@link Status}
+ * @returns True if `value` is a {@link Status}; false otherwise
  *
  * @example
  * ```ts
@@ -65,10 +65,10 @@ export const isDecision: Guard<Decision> = literalOf('approved', 'denied', 'subm
 export const isStatus: Guard<Status> = literalOf(STATUSES)
 
 /**
- * Determine whether a value is a {@link ProgramEffect} literal.
+ * Determines whether a value is a {@link ProgramEffect} literal.
  *
  * @param value - The candidate value
- * @returns `true` when `value` is a {@link ProgramEffect}
+ * @returns True if `value` is a {@link ProgramEffect}; false otherwise
  *
  * @example
  * ```ts
@@ -80,10 +80,10 @@ export const isStatus: Guard<Status> = literalOf(STATUSES)
 export const isProgramEffect: Guard<ProgramEffect> = literalOf('notice', 'limit')
 
 /**
- * Determine whether a value is an exact {@link Notice} record.
+ * Determines whether a value is an exact {@link Notice} record.
  *
  * @param value - The candidate value
- * @returns `true` when `value` is a {@link Notice}
+ * @returns True if `value` is a {@link Notice}; false otherwise
  *
  * @example
  * ```ts
@@ -97,10 +97,10 @@ export function isNotice(value: unknown): value is Notice {
 }
 
 /**
- * Determine whether a value is an exact {@link AggregateDefinition} record.
+ * Determines whether a value is an exact {@link AggregateDefinition} record.
  *
  * @param value - The candidate value
- * @returns `true` when `value` is an {@link AggregateDefinition}
+ * @returns True if `value` is an {@link AggregateDefinition}; false otherwise
  *
  * @example
  * ```ts
@@ -117,14 +117,14 @@ export function isAggregateDefinition(value: unknown): value is AggregateDefinit
 }
 
 /**
- * Determine whether a value is an exact {@link ProgramDefinition} record.
+ * Determines whether a value is an exact {@link ProgramDefinition} record.
  *
  * @remarks
  * `rating` is optional — an omitted `rating` authors an eligibility-only
  * program (see {@link ProgramDefinition}).
  *
  * @param value - The candidate value
- * @returns `true` when `value` is a {@link ProgramDefinition}
+ * @returns True if `value` is a {@link ProgramDefinition}; false otherwise
  *
  * @example
  * ```ts
@@ -151,7 +151,7 @@ export function isProgramDefinition(value: unknown): value is ProgramDefinition 
 }
 
 /**
- * Determine whether a value is an open program sums record.
+ * Determines whether a value is an open program sums record.
  *
  * @remarks
  * Every own string-named property is checked, including non-enumerable
@@ -160,7 +160,7 @@ export function isProgramDefinition(value: unknown): value is ProgramDefinition 
  * infinities, because the published contract does not refine them.
  *
  * @param value - The candidate value
- * @returns `true` when every own string-named value is a number
+ * @returns True if every own string-named value is a number; false otherwise
  *
  * @example
  * ```ts
@@ -176,14 +176,14 @@ export function isProgramSums(value: unknown): value is Readonly<Record<string, 
 }
 
 /**
- * Determine whether a value is an open result-side {@link Determination}.
+ * Determines whether a value is an open result-side {@link Determination}.
  *
  * @remarks
  * Unknown members and class instances are admitted. Arrays are refused.
  * Optional `scope` and `message` members may be absent or `undefined`.
  *
  * @param value - The candidate value
- * @returns `true` when every published determination member conforms
+ * @returns True if every published determination member conforms; false otherwise
  *
  * @example
  * ```ts
@@ -205,13 +205,13 @@ export const isDetermination: Guard<Determination> = objectOf(
 )
 
 /**
- * Determine whether a value is an open result-side {@link AggregateGroup}.
+ * Determines whether a value is an open result-side {@link AggregateGroup}.
  *
  * @remarks
  * Unknown members and class instances are admitted. Arrays are refused.
  *
  * @param value - The candidate value
- * @returns `true` when every published aggregate-group member conforms
+ * @returns True if every published aggregate-group member conforms; false otherwise
  *
  * @example
  * ```ts
@@ -227,13 +227,13 @@ export const isAggregateGroup: Guard<AggregateGroup> = objectOf({
 })
 
 /**
- * Determine whether a value is an open result-side {@link Tally}.
+ * Determines whether a value is an open result-side {@link Tally}.
  *
  * @remarks
  * Unknown members and class instances are admitted. Arrays are refused.
  *
  * @param value - The candidate value
- * @returns `true` when every published tally member conforms
+ * @returns True if every published tally member conforms; false otherwise
  *
  * @example
  * ```ts
@@ -245,14 +245,14 @@ export const isAggregateGroup: Guard<AggregateGroup> = objectOf({
 export const isTally: Guard<Tally> = objectOf({ count: isNumber, sums: isProgramSums })
 
 /**
- * Determine whether a value is a total open status-tally record.
+ * Determines whether a value is a total open status-tally record.
  *
  * @remarks
  * Every {@link Status} in {@link STATUS_PRECEDENCE} is required and checked.
  * Unknown members and class instances are admitted. Arrays are refused.
  *
  * @param value - The candidate value
- * @returns `true` when every required status member is a {@link Tally}
+ * @returns True if every required status member is a {@link Tally}; false otherwise
  *
  * @example
  * ```ts
@@ -268,7 +268,7 @@ export function isTallies(value: unknown): value is Readonly<Record<Status, Tall
 }
 
 /**
- * Determine whether a value is an open {@link ProgramResult}.
+ * Determines whether a value is an open {@link ProgramResult}.
  *
  * @remarks
  * This guard is result-postured for values returned through a borrowed
@@ -277,7 +277,7 @@ export function isTallies(value: unknown): value is Readonly<Record<Status, Tall
  * over their complete nested result closures. Arrays are refused.
  *
  * @param value - The candidate value
- * @returns `true` when every published program-result member conforms
+ * @returns True if every published program-result member conforms; false otherwise
  *
  * @example
  * ```ts
@@ -304,7 +304,7 @@ export const isProgramResult: Guard<ProgramResult> = objectOf(
 )
 
 /**
- * Determine whether a value is an open {@link AggregateResult}.
+ * Determines whether a value is an open {@link AggregateResult}.
  *
  * @remarks
  * This guard is result-postured for values returned through a borrowed
@@ -313,7 +313,7 @@ export const isProgramResult: Guard<ProgramResult> = objectOf(
  * record, and sums record. Arrays are refused.
  *
  * @param value - The candidate value
- * @returns `true` when every published aggregate-result member conforms
+ * @returns True if every published aggregate-result member conforms; false otherwise
  *
  * @example
  * ```ts
@@ -337,7 +337,7 @@ export const isAggregateResult: Guard<AggregateResult> = objectOf({
 })
 
 /**
- * Determine whether a value is an open {@link ProgramValidationResult}.
+ * Determines whether a value is an open {@link ProgramValidationResult}.
  *
  * @remarks
  * `ProgramValidationResult` is this package's own declared interface, not an
@@ -346,7 +346,7 @@ export const isAggregateResult: Guard<AggregateResult> = objectOf({
  * Unknown members and class instances are admitted. Arrays are refused.
  *
  * @param value - The candidate value
- * @returns `true` when every published program-validation member conforms
+ * @returns True if every published program-validation member conforms; false otherwise
  *
  * @example
  * ```ts

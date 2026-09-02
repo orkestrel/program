@@ -18,8 +18,8 @@ import { ProgramError } from '../errors.js'
 import { createProgram } from '../factories.js'
 
 /**
- * An ordered manager over compiled {@link ProgramInterface}s (AGENTS §9), sharing
- * one qualifier, rater, and reason engine across every program it compiles.
+ * Manages compiled {@link ProgramInterface}s in order (AGENTS §9), sharing one
+ * qualifier, rater, and reason engine across every program it compiles.
  *
  * @remarks
  * OWNS its ordered `#programs` collection and its own {@link Emitter} over

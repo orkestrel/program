@@ -11,16 +11,16 @@ import type { RatingDefinition, RatingResult, RaterInterface } from '@orkestrel/
 import type { LogicalDefinition, ReasonInterface, Subject } from '@orkestrel/reason'
 import type { STATUSES } from './constants.js'
 
-/** A final authority outcome, derived from global eligibility. */
+/** Identifies a final authority outcome, derived from global eligibility. */
 export type Decision = 'approved' | 'denied' | 'submitted'
 
-/** The presentation and tally status derived from eligibility, conditions, and rating success. */
+/** Identifies the presentation and tally status derived from eligibility, conditions, and rating success. */
 export type Status = (typeof STATUSES)[number]
 
-/** A post-qualification program determination effect. */
+/** Identifies a post-qualification program determination effect. */
 export type ProgramEffect = 'notice' | 'limit'
 
-/** A coded {@link ProgramError} programmer-error code. */
+/** Identifies a coded {@link ProgramError} programmer-error code. */
 export type ProgramErrorCode =
 	| 'DUPLICATE'
 	| 'MISSING'
@@ -30,7 +30,7 @@ export type ProgramErrorCode =
 	| 'DESTROYED'
 
 /**
- * Optional fields accepted by `buildNotice`.
+ * Describes the optional fields accepted by `buildNotice`.
  *
  * @remarks
  * `scope` — the rating-line id the notice presents against; omitted for an
@@ -41,7 +41,7 @@ export interface NoticeInput {
 }
 
 /**
- * Optional fields accepted by `buildAggregateDefinition`.
+ * Describes the optional fields accepted by `buildAggregateDefinition`.
  *
  * @remarks
  * `by` — the partition key field; omitted skips partitioning. `gates` — a
@@ -54,7 +54,7 @@ export interface AggregateInput {
 }
 
 /**
- * Optional fields accepted by `buildProgramDefinition`.
+ * Describes the optional fields accepted by `buildProgramDefinition`.
  *
  * @remarks
  * `description` — a free-text summary. `notices` — authored unconditional
@@ -70,14 +70,14 @@ export interface ProgramInput {
 	readonly metadata?: JSONValue
 }
 
-/** An authored, unconditional program notice. */
+/** Describes an authored, unconditional program notice. */
 export interface Notice {
 	readonly id: string
 	readonly message: string
 	readonly scope?: string
 }
 
-/** One resolved notice or authority-limit outcome. */
+/** Describes one resolved notice or authority-limit outcome. */
 export interface Determination {
 	readonly id: string
 	readonly effect: ProgramEffect
@@ -87,35 +87,35 @@ export interface Determination {
 	readonly premises: readonly Premise[]
 }
 
-/** Batch aggregate fields, an optional partition key, and optional gates. */
+/** Describes batch aggregate fields, an optional partition key, and optional gates. */
 export interface AggregateDefinition {
 	readonly fields: readonly FieldPath[]
 	readonly by?: FieldPath
 	readonly gates?: LogicalDefinition
 }
 
-/** One subject's private aggregate working projection. */
+/** Describes one subject's private aggregate working projection. */
 export interface AggregateProjection {
 	readonly count: number
 	readonly sums: Readonly<Record<string, number>>
 	readonly group?: AggregateGroup
 }
 
-/** One batch aggregate partition. */
+/** Describes one batch aggregate partition. */
 export interface AggregateGroup {
 	readonly key: string
 	readonly count: number
 	readonly sums: Readonly<Record<string, number>>
 }
 
-/** A status tally — a count plus summed aggregate fields. */
+/** Describes a status tally — a count plus summed aggregate fields. */
 export interface Tally {
 	readonly count: number
 	readonly sums: Readonly<Record<string, number>>
 }
 
 /**
- * A pure authored program definition.
+ * Describes a pure authored program definition.
  *
  * @remarks
  * `qualification` runs first through `@orkestrel/qualifier`; `rating` runs only
@@ -145,13 +145,15 @@ export interface ProgramDefinition {
 	readonly metadata?: JSONValue
 }
 
-/** One subject's complete program outcome. */
+/** Describes one subject's complete program outcome. */
 export interface ProgramResult {
 	readonly id: string
 	readonly name: string
 	readonly eligibility: Eligibility
 	readonly status: Status
 	/**
+	 * Holds the final authority outcome.
+	 *
 	 * @remarks
 	 * Present ONLY when the program HAS an `authority`, the execution SUCCEEDED
 	 * (qualification, rating when it ran, and authority all produced no errors),
@@ -166,7 +168,7 @@ export interface ProgramResult {
 	readonly errors: readonly string[]
 }
 
-/** A batch program outcome across every subject. */
+/** Describes a batch program outcome across every subject. */
 export interface AggregateResult {
 	readonly id: string
 	readonly name: string
@@ -181,7 +183,7 @@ export interface AggregateResult {
 	readonly errors: readonly string[]
 }
 
-/** Semantic definition validation. */
+/** Describes semantic definition validation. */
 export interface ProgramValidationResult {
 	readonly valid: boolean
 	readonly errors: readonly string[]
@@ -189,7 +191,7 @@ export interface ProgramValidationResult {
 }
 
 /**
- * The push observation surface of a {@link ProgramInterface} (AGENTS §13).
+ * Describes the push observation surface of a {@link ProgramInterface} (AGENTS §13).
  *
  * @remarks
  * `rate` fires only when at least one line was selected. `determine` fires once
@@ -207,7 +209,7 @@ export type ProgramEventMap = {
 }
 
 /**
- * Options for `createProgram` / the `Program` constructor.
+ * Describes the options for `createProgram` / the `Program` constructor.
  *
  * @remarks
  * `qualifier` — an injected, caller-owned qualifier; created and owned by the
@@ -230,8 +232,8 @@ export interface ProgramOptions {
 }
 
 /**
- * One compiled program — composes one qualifier and one rater over a shared
- * reason engine.
+ * Defines one compiled program that composes one qualifier and one rater over a
+ * shared reason engine.
  *
  * @remarks
  * The array-of-subjects `execute` overload is declared FIRST (AGENTS §9.2) so a
@@ -248,7 +250,7 @@ export interface ProgramInterface {
 	destroy(): void
 }
 
-/** The push observation surface of a {@link ProgramManagerInterface} (AGENTS §13). */
+/** Describes the push observation surface of a {@link ProgramManagerInterface} (AGENTS §13). */
 export type ProgramManagerEventMap = {
 	readonly add: readonly [id: string]
 	readonly remove: readonly [id: string]
@@ -256,7 +258,7 @@ export type ProgramManagerEventMap = {
 }
 
 /**
- * Options for `createProgramManager` / the `ProgramManager` constructor.
+ * Describes the options for `createProgramManager` / the `ProgramManager` constructor.
  *
  * @remarks
  * `qualifier` — an injected, caller-owned qualifier; created and owned when
@@ -279,7 +281,7 @@ export interface ProgramManagerOptions {
 	readonly error?: EmitterErrorHandler
 }
 
-/** An ordered manager over compiled programs (AGENTS §9), sharing one qualifier and rater. */
+/** Defines an ordered manager over compiled programs (AGENTS §9), sharing one qualifier and rater. */
 export interface ProgramManagerInterface {
 	readonly emitter: EmitterInterface<ProgramManagerEventMap>
 	readonly size: number

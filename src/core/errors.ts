@@ -1,7 +1,7 @@
 import type { ProgramErrorCode } from './types.js'
 
 /**
- * A coded programmer error thrown by the program layer.
+ * Reports a coded programmer error thrown by the program layer.
  *
  * @remarks
  * `DUPLICATE` — a program id collision on `ProgramManager.add`, or a duplicate

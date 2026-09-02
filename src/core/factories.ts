@@ -9,7 +9,7 @@ import { Program } from './programs/Program.js'
 import { ProgramManager } from './programs/ProgramManager.js'
 
 /**
- * Create one compiled program over a qualifier and rater.
+ * Creates one compiled program over a qualifier and rater.
  *
  * @remarks
  * Validates the definition at construction when `options.validate` is left at
@@ -39,7 +39,7 @@ export function createProgram(
 }
 
 /**
- * Create one ordered manager over compiled programs.
+ * Creates one ordered manager over compiled programs.
  *
  * @remarks
  * Creates or borrows one shared reason engine, qualifier, and rater and injects

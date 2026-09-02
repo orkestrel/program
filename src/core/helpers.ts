@@ -43,7 +43,7 @@ import { ProgramError } from './errors.js'
 import { isProgramDefinition } from './validators.js'
 
 /**
- * Determine whether a caller subject already carries a reserved program key.
+ * Determines whether a caller subject already carries a reserved program key.
  *
  * @remarks
  * `aggregate` and `outcome` are program-private working-subject namespaces — the
@@ -52,7 +52,7 @@ import { isProgramDefinition } from './validators.js'
  * collide with a projection, so it is rejected before qualification.
  *
  * @param subject - The caller subject to check
- * @returns `true` when the subject owns `aggregate` or `outcome`
+ * @returns True if the subject owns `aggregate` or `outcome`; false otherwise
  *
  * @example
  * ```ts
@@ -67,7 +67,7 @@ export function hasReservedKey(subject: Readonly<Record<string, unknown>>): bool
 }
 
 /**
- * Assert a value is a valid program {@link Subject}, narrowing it in place.
+ * Asserts a value is a valid program {@link Subject}, narrowing it in place.
  *
  * @param subject - The candidate subject to validate
  * @throws {@link ProgramError} `'MISMATCH'` when the value is not a record, or
@@ -91,7 +91,7 @@ export function assertProgramSubject(subject: unknown): asserts subject is Subje
 }
 
 /**
- * Select the rating lines a subject may be rated on from scoped eligibility.
+ * Selects the rating lines a subject may be rated on from scoped eligibility.
  *
  * @remarks
  * A scope names a rating-line id. A line survives when its scope is absent
@@ -122,7 +122,7 @@ export function selectProgramLines(
 }
 
 /**
- * Derive the final program {@link Status} from a definition's rating policy and
+ * Derives the final program {@link Status} from a definition's rating policy and
  * qualification/rating evidence.
  *
  * @remarks
@@ -166,7 +166,7 @@ export function deriveStatus(
 }
 
 /**
- * Map a global {@link Eligibility} to its deterministic authority {@link Decision}.
+ * Maps a global {@link Eligibility} to its deterministic authority {@link Decision}.
  *
  * @param eligibility - The global eligibility
  * @returns The matching decision
@@ -184,7 +184,7 @@ export function decideEligibility(eligibility: Eligibility): Decision {
 }
 
 /**
- * Resolve authored {@link Notice}s into unconditionally-applied `notice`
+ * Resolves authored {@link Notice}s into unconditionally-applied `notice`
  * {@link Determination}s.
  *
  * @remarks
@@ -218,7 +218,7 @@ export function buildNotices(
 }
 
 /**
- * Convert a logical result's applied rules into `limit` {@link Determination}s.
+ * Converts a logical result's applied rules into `limit` {@link Determination}s.
  *
  * @remarks
  * Fires for both the per-subject authority and the batch aggregate gates — both
@@ -269,7 +269,7 @@ export function buildLimits(
 }
 
 /**
- * Build the private authority outcome projection from an assembled program result.
+ * Builds the private authority outcome projection from an assembled program result.
  *
  * @remarks
  * The authority reads this record under {@link OUTCOME_KEY}; it never receives
@@ -299,7 +299,7 @@ export function buildOutcomeProjection(result: ProgramResult): Readonly<Record<s
 }
 
 /**
- * Assemble a {@link ProgramResult} from its qualification, rating, and
+ * Assembles a {@link ProgramResult} from its qualification, rating, and
  * determination parts — before or after authority.
  *
  * @remarks
@@ -368,7 +368,7 @@ export function buildProgramResult(
 }
 
 /**
- * Add optional aggregate context to a private subject copy for qualification.
+ * Adds optional aggregate context to a private subject copy for qualification.
  *
  * @remarks
  * The original subject is returned unchanged when no aggregate context exists.
@@ -411,7 +411,7 @@ export function buildQualificationSubject(
 }
 
 /**
- * Return authored scopes (qualification ruling scopes or notice scopes) that
+ * Returns authored scopes (qualification ruling scopes or notice scopes) that
  * name no rating line on the program.
  *
  * @remarks
@@ -443,7 +443,7 @@ export function findMissingScopes(definition: ProgramDefinition): readonly strin
 }
 
 /**
- * Assert a program definition's always-on construction invariants — missing
+ * Asserts a program definition's always-on construction invariants — missing
  * scope references and duplicate rating-line or notice ids.
  *
  * @remarks
@@ -492,7 +492,7 @@ export function assertProgramDefinition(definition: ProgramDefinition): void {
 }
 
 /**
- * Validate a program definition's shape, references, and nested definitions.
+ * Validates a program definition's shape, references, and nested definitions.
  *
  * @remarks
  * The single semantic-validation implementation used by `Program.validate`. It
@@ -601,7 +601,7 @@ export function validateProgramDefinition(
 }
 
 /**
- * Coerce a subject's partition-key field to its group-key string.
+ * Coerces a subject's partition-key field to its group-key string.
  *
  * @remarks
  * The key is the resolved field coerced with `String` — `undefined` collapses
@@ -625,7 +625,7 @@ export function formatGroupKey(subject: Subject, by: FieldPath): string {
 }
 
 /**
- * Fold one subject's finite aggregate field values into a sums record.
+ * Folds one subject's finite aggregate field values into a sums record.
  *
  * @remarks
  * Returns a FRESH record — `sums` is never mutated. Only finite numbers
@@ -660,7 +660,7 @@ export function sumFields(
 }
 
 /**
- * Sum aggregate fields across a batch of subjects.
+ * Sums aggregate fields across a batch of subjects.
  *
  * @remarks
  * A {@link FieldPath} may be nested — a nested path sums a nested subject field
@@ -689,7 +689,7 @@ export function aggregateSums(
 }
 
 /**
- * Partition a batch of subjects by a field, summing aggregate fields per key.
+ * Partitions a batch of subjects by a field, summing aggregate fields per key.
  *
  * @remarks
  * The partition key is derived by {@link formatGroupKey}. Group order follows
@@ -728,7 +728,7 @@ export function aggregateGroups(
 }
 
 /**
- * Build one subject's overall and optional group aggregate projection.
+ * Builds one subject's overall and optional group aggregate projection.
  *
  * @remarks
  * The projection carries the whole-batch `count` and `sums` plus the subject's
@@ -762,7 +762,7 @@ export function buildAggregateProjection(
 }
 
 /**
- * Build the reserved-key record a batch aggregate-gate definition runs against.
+ * Builds the reserved-key record a batch aggregate-gate definition runs against.
  *
  * @remarks
  * Unlike a per-subject {@link buildAggregateProjection}, the batch record carries
@@ -809,7 +809,7 @@ export function buildEmptySums(fields: readonly FieldPath[]): Readonly<Record<st
 }
 
 /**
- * Complete a partial status tally record with zero entries for every missing
+ * Completes a partial status tally record with zero entries for every missing
  * {@link Status}.
  *
  * @param entries - The partial tally entries to complete
@@ -855,7 +855,7 @@ export function buildEmptyTallies(fields: readonly FieldPath[]): Readonly<Record
 }
 
 /**
- * Add one subject's aggregate contribution to a status tally record.
+ * Adds one subject's aggregate contribution to a status tally record.
  *
  * @param tallies - The tallies to update
  * @param result - The subject's program result (its `status` selects the tally)
@@ -883,7 +883,7 @@ export function tallyProgram(
 }
 
 /**
- * Assemble one batch {@link AggregateResult} from its per-subject and aggregate
+ * Assembles one batch {@link AggregateResult} from its per-subject and aggregate
  * parts.
  *
  * @remarks
