@@ -1,4 +1,4 @@
-import type { Decision, Status } from './types.js'
+import type { Decision } from './types.js'
 import type { Eligibility } from '@orkestrel/qualifier'
 
 /** Names the default definition validation policy for `createProgram` / `ProgramManager.add`. */
@@ -12,15 +12,6 @@ export const STATUSES = Object.freeze([
 	'unrated',
 	'eligible',
 ] as const)
-
-/** Lists the status tally precedence order — least to most resolved. */
-export const STATUS_PRECEDENCE: readonly Status[] = Object.freeze([
-	'ineligible',
-	'referral',
-	'conditional',
-	'unrated',
-	'eligible',
-])
 
 /** Maps each global eligibility to its deterministic authority decision. */
 export const ELIGIBILITY_DECISIONS: Readonly<Record<Eligibility, Decision>> = Object.freeze({

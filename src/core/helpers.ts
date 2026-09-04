@@ -31,14 +31,9 @@ import type {
 	Tally,
 } from './types.js'
 import { isFiniteNumber, isRecord, resolveField } from '@orkestrel/contract'
-import { findRule, interpolateMessage, logicalPremises } from '@orkestrel/qualifier'
+import { findRule, interpolateMessage, ruleToPremises } from '@orkestrel/qualifier'
 import { findDuplicates, formatField, isReasonValidationResult } from '@orkestrel/reason'
-import {
-	AGGREGATE_KEY,
-	ELIGIBILITY_DECISIONS,
-	OUTCOME_KEY,
-	STATUS_PRECEDENCE,
-} from './constants.js'
+import { AGGREGATE_KEY, ELIGIBILITY_DECISIONS, OUTCOME_KEY, STATUSES } from './constants.js'
 import { ProgramError } from './errors.js'
 import { isProgramDefinition } from './validators.js'
 
@@ -70,8 +65,9 @@ export function hasReservedKey(subject: Readonly<Record<string, unknown>>): bool
  * Asserts a value is a valid program {@link Subject}, narrowing it in place.
  *
  * @param subject - The candidate subject to validate
- * @throws {@link ProgramError} `'MISMATCH'` when the value is not a record, or
- * `'RESERVED'` when it already carries the `aggregate` or `outcome` key
+ * @throws {@link ProgramError} Thrown when the value is not a record (`'MISMATCH'`).
+ * @throws {@link ProgramError} Thrown when the value already carries the `aggregate`
+ * or `outcome` key (`'RESERVED'`).
  *
  * @example
  * ```ts
@@ -126,7 +122,7 @@ export function selectProgramLines(
  * qualification/rating evidence.
  *
  * @remarks
- * Explicit policy, not an opaque precedence reduce (AGENTS §10): global
+ * Explicit policy, not an opaque precedence reduce: global
  * ineligibility or referral is terminal; a scoped referral yields `referral`;
  * an applied `condition` or an applied scoped `restriction` (a line was
  * removed but others rated) is `conditional`. When the definition OMITS
@@ -184,8 +180,8 @@ export function decideEligibility(eligibility: Eligibility): Decision {
 }
 
 /**
- * Resolves authored {@link Notice}s into unconditionally-applied `notice`
- * {@link Determination}s.
+ * Resolves authored {@link Notice} values into unconditionally-applied `notice`
+ * {@link Determination} values.
  *
  * @remarks
  * Notices are program output only — they never affect eligibility, status, line
@@ -198,12 +194,12 @@ export function decideEligibility(eligibility: Eligibility): Decision {
  *
  * @example
  * ```ts
- * import { buildNotices } from '@orkestrel/program'
+ * import { buildNoticeDeterminations } from '@orkestrel/program'
  *
- * buildNotices([{ id: 'min', message: 'Minimum applies' }], { id: 'r1' })
+ * buildNoticeDeterminations([{ id: 'min', message: 'Minimum applies' }], { id: 'r1' })
  * ```
  */
-export function buildNotices(
+export function buildNoticeDeterminations(
 	notices: readonly Notice[],
 	subject: Readonly<Record<string, unknown>>,
 ): readonly Determination[] {
@@ -218,14 +214,14 @@ export function buildNotices(
 }
 
 /**
- * Converts a logical result's applied rules into `limit` {@link Determination}s.
+ * Converts a logical result's applied rules into `limit` {@link Determination} values.
  *
  * @remarks
  * Fires for both the per-subject authority and the batch aggregate gates — both
- * are plain {@link LogicalDefinition}s with no program-authored ruling map, so a
+ * are plain {@link LogicalDefinition} definitions with no program-authored ruling map, so a
  * fired rule's own `description` (from `@orkestrel/reason`) is the message
  * template, interpolated against the working record the definition ran against.
- * Rich premises reuse the qualifier's {@link logicalPremises}. A rule that never
+ * Rich premises reuse the qualifier's {@link ruleToPremises}. A rule that never
  * fires produces no determination — program has no authored ruling map to keep
  * evidence for.
  *
@@ -238,12 +234,12 @@ export function buildNotices(
  *
  * @example
  * ```ts
- * import { buildLimits } from '@orkestrel/program'
+ * import { buildLimitDeterminations } from '@orkestrel/program'
  *
- * buildLimits(authority, resolved, outcome, evaluator)
+ * buildLimitDeterminations(authority, resolved, outcome, evaluator)
  * ```
  */
-export function buildLimits(
+export function buildLimitDeterminations(
 	definition: LogicalDefinition,
 	result: LogicalResult,
 	working: Readonly<Record<string, unknown>>,
@@ -262,7 +258,7 @@ export function buildLimits(
 			...(rule.description === undefined
 				? {}
 				: { message: interpolateMessage(rule.description, working) }),
-			premises: logicalPremises(rule, working, evaluator, labels),
+			premises: ruleToPremises(rule, working, evaluator, labels),
 		})
 	}
 	return output
@@ -452,10 +448,10 @@ export function findMissingScopes(definition: ProgramDefinition): readonly strin
  * an authoring mistake this severe cannot silently compile.
  *
  * @param definition - The program definition to assert
- * @throws {@link ProgramError} `'MISSING'` when a ruling or notice scope names
- * no rating line
- * @throws {@link ProgramError} `'DUPLICATE'` when two rating lines or two
- * notices share an id
+ * @throws {@link ProgramError} Thrown when a ruling or notice scope names no
+ * rating line (`'MISSING'`).
+ * @throws {@link ProgramError} Thrown when two rating lines or two notices share
+ * an id (`'DUPLICATE'`).
  *
  * @example
  * ```ts
@@ -576,7 +572,7 @@ export function validateProgramDefinition(
 			if (fields.has(key)) errors.push(`Duplicate aggregate field "${key}"`)
 			fields.add(key)
 		}
-		if (aggregate.by !== undefined && formatField(aggregate.by).length === 0) {
+		if (aggregate.partition !== undefined && formatField(aggregate.partition).length === 0) {
 			errors.push('Aggregate partition field must be non-empty')
 		}
 		if (aggregate.gates !== undefined) {
@@ -610,7 +606,7 @@ export function validateProgramDefinition(
  * collides with the string `'1'`.
  *
  * @param subject - The subject to key
- * @param by - The partition key field
+ * @param partition - The field the batch partitions on
  * @returns The subject's group key
  *
  * @example
@@ -620,8 +616,8 @@ export function validateProgramDefinition(
  * formatGroupKey({ location: 'east' }, 'location') // 'east'
  * ```
  */
-export function formatGroupKey(subject: Subject, by: FieldPath): string {
-	return String(resolveField(subject, by) ?? '')
+export function formatGroupKey(subject: Subject, partition: FieldPath): string {
+	return String(resolveField(subject, partition) ?? '')
 }
 
 /**
@@ -697,8 +693,8 @@ export function aggregateSums(
  *
  * @param subjects - The batch of subjects
  * @param fields - The fields to sum within each partition
- * @param by - The partition key field; no partition is built when absent
- * @returns A fresh list of aggregate groups, or an empty list when `by` is absent
+ * @param partition - The field the batch partitions on; no partition is built when absent
+ * @returns A fresh list of aggregate groups, or an empty list when `partition` is absent
  *
  * @example
  * ```ts
@@ -710,12 +706,12 @@ export function aggregateSums(
 export function aggregateGroups(
 	subjects: readonly Subject[],
 	fields: readonly FieldPath[],
-	by?: FieldPath,
+	partition?: FieldPath,
 ): readonly AggregateGroup[] {
-	if (by === undefined) return []
+	if (partition === undefined) return []
 	const records = new Map<string, Subject[]>()
 	for (const subject of subjects) {
-		const key = formatGroupKey(subject, by)
+		const key = formatGroupKey(subject, partition)
 		const group = records.get(key)
 		if (group === undefined) records.set(key, [subject])
 		else group.push(subject)
@@ -739,7 +735,7 @@ export function aggregateGroups(
  * @param count - The whole-batch subject count
  * @param sums - The whole-batch summed aggregate fields
  * @param groups - The batch partitions
- * @param by - The partition key field; no group is attached when absent
+ * @param partition - The field the batch partitions on; no group is attached when absent
  * @returns A fresh aggregate projection
  *
  * @example
@@ -754,10 +750,12 @@ export function buildAggregateProjection(
 	count: number,
 	sums: Readonly<Record<string, number>>,
 	groups: readonly AggregateGroup[],
-	by?: FieldPath,
+	partition?: FieldPath,
 ): AggregateProjection {
 	const group =
-		by === undefined ? undefined : groups.find((entry) => entry.key === formatGroupKey(subject, by))
+		partition === undefined
+			? undefined
+			: groups.find((entry) => entry.key === formatGroupKey(subject, partition))
 	return { count, sums: { ...sums }, ...(group === undefined ? {} : { group }) }
 }
 
@@ -813,7 +811,7 @@ export function buildEmptySums(fields: readonly FieldPath[]): Readonly<Record<st
  * {@link Status}.
  *
  * @param entries - The partial tally entries to complete
- * @returns A record with all five statuses present
+ * @returns A record carrying every {@link Status}
  *
  * @example
  * ```ts
@@ -835,7 +833,7 @@ export function completeTallies(
 }
 
 /**
- * Builds complete zero status tallies in {@link STATUS_PRECEDENCE} order.
+ * Builds complete zero status tallies in {@link STATUSES} order.
  *
  * @param fields - The fields each tally's sums are zeroed for
  * @returns A fresh, complete tally record
@@ -849,8 +847,7 @@ export function completeTallies(
  */
 export function buildEmptyTallies(fields: readonly FieldPath[]): Readonly<Record<Status, Tally>> {
 	const entries: Partial<Record<Status, Tally>> = {}
-	for (const status of STATUS_PRECEDENCE)
-		entries[status] = { count: 0, sums: buildEmptySums(fields) }
+	for (const status of STATUSES) entries[status] = { count: 0, sums: buildEmptySums(fields) }
 	return completeTallies(entries)
 }
 
@@ -865,12 +862,12 @@ export function buildEmptyTallies(fields: readonly FieldPath[]): Readonly<Record
  *
  * @example
  * ```ts
- * import { tallyProgram } from '@orkestrel/program'
+ * import { tallySubject } from '@orkestrel/program'
  *
- * tallyProgram(tallies, result, { id: 'r1', amount: 5 }, ['amount'])
+ * tallySubject(tallies, result, { id: 'r1', amount: 5 }, ['amount'])
  * ```
  */
-export function tallyProgram(
+export function tallySubject(
 	tallies: Readonly<Record<Status, Tally>>,
 	result: ProgramResult,
 	subject: Subject,
@@ -985,7 +982,7 @@ export function buildProgramDefinition(
  * Builds a fresh {@link Notice}.
  *
  * @param id - The notice id
- * @param message - The message template, carrying optional `{{token}}`s
+ * @param message - The message template, carrying optional `{{token}}` placeholders
  * @param input - Optional presentation scope
  * @returns A fresh notice
  *
@@ -1015,7 +1012,7 @@ export function buildNotice(id: string, message: string, input?: NoticeInput): N
  * ```ts
  * import { buildAggregateDefinition } from '@orkestrel/program'
  *
- * buildAggregateDefinition(['amount'], { by: 'location' })
+ * buildAggregateDefinition(['amount'], { partition: 'location' })
  * ```
  */
 export function buildAggregateDefinition(
@@ -1024,7 +1021,7 @@ export function buildAggregateDefinition(
 ): AggregateDefinition {
 	return {
 		fields: [...fields],
-		...(input?.by === undefined ? {} : { by: input.by }),
+		...(input?.partition === undefined ? {} : { partition: input.partition }),
 		...(input?.gates === undefined ? {} : { gates: input.gates }),
 	}
 }

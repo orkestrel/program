@@ -41,7 +41,7 @@ export class ProgramError extends Error {
 }
 
 /**
- * Checks whether a caught value is a {@link ProgramError}.
+ * Determines whether a caught value is a {@link ProgramError}.
  *
  * @param value - The candidate value
  * @returns True if the value is a {@link ProgramError}; false otherwise

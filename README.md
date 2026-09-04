@@ -21,15 +21,15 @@ npm install @orkestrel/program
 
 ## Requirements
 
-- Node.js >= 24
-- ESM (`import`) and CommonJS (`require`) via the `exports` field
+- Node.js >= 22.12.0
+- ESM (`import`) and CommonJS (`require`) through the `exports` field
 
 ## Usage
 
 ```ts
 import { buildProgramDefinition, createProgram } from '@orkestrel/program'
-import { qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
-import { lineDefinition, ratingDefinition } from '@orkestrel/rater'
+import { createQualificationDefinition, createRuling } from '@orkestrel/qualifier'
+import { buildLineDefinition, buildRatingDefinition } from '@orkestrel/rater'
 import {
 	createAtom,
 	createFactorGroup,
@@ -47,20 +47,20 @@ const gates = createLogicalDefinition('gates', 'Eligibility gates', [
 	),
 ])
 
-const qualification = qualificationDefinition(
+const qualification = createQualificationDefinition(
 	'standard-qualification',
 	'Standard qualification',
 	[gates],
 	{
 		rulings: [
-			rulingDefinition('license', 'gates', 'licensed', 'restriction', {
+			createRuling('license', 'gates', 'licensed', 'restriction', {
 				message: 'A license is required',
 			}),
 		],
 	},
 )
 
-const base = lineDefinition(
+const base = buildLineDefinition(
 	'base',
 	'Base premium',
 	createQuantitativeDefinition('base-rate', 'Base rate', [
@@ -68,7 +68,7 @@ const base = lineDefinition(
 	]),
 )
 
-const rating = ratingDefinition('standard-rating', 'Standard rating', [base])
+const rating = buildRatingDefinition('standard-rating', 'Standard rating', [base])
 
 const definition = buildProgramDefinition('standard', 'Standard program', qualification, rating)
 

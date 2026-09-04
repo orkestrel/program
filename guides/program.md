@@ -26,7 +26,7 @@
 > `Program` either receives injected qualifier, rater, and engine instances (never
 > destroyed by `Program`) or creates and OWNS one shared quantitative-plus-logical
 > engine (`bail: false`), destroyed in `destroy()`. Every `execute` call fires through
-> `Program`'s typed `emitter` (AGENTS §13). Source: [`src/core`](../src/core).
+> `Program`'s typed `emitter`. Source: [`src/core`](../src/core).
 > Surfaced through the `@src/core` barrel.
 
 ## Surface
@@ -35,8 +35,8 @@ Create a program, execute one subject, and inspect the nested results:
 
 ```ts
 import { buildProgramDefinition, createProgram } from '@orkestrel/program'
-import { qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
-import { lineDefinition, ratingDefinition } from '@orkestrel/rater'
+import { createQualificationDefinition, createRuling } from '@orkestrel/qualifier'
+import { buildLineDefinition, buildRatingDefinition } from '@orkestrel/rater'
 import {
 	createAtom,
 	createFactorGroup,
@@ -54,20 +54,20 @@ const gates = createLogicalDefinition('gates', 'Eligibility gates', [
 	),
 ])
 
-const qualification = qualificationDefinition(
+const qualification = createQualificationDefinition(
 	'standard-qualification',
 	'Standard qualification',
 	[gates],
 	{
 		rulings: [
-			rulingDefinition('license', 'gates', 'licensed', 'restriction', {
+			createRuling('license', 'gates', 'licensed', 'restriction', {
 				message: 'A license is required',
 			}),
 		],
 	},
 )
 
-const base = lineDefinition(
+const base = buildLineDefinition(
 	'base',
 	'Base premium',
 	createQuantitativeDefinition('base-rate', 'Base rate', [
@@ -75,7 +75,7 @@ const base = lineDefinition(
 	]),
 )
 
-const rating = ratingDefinition('standard-rating', 'Standard rating', [base])
+const rating = buildRatingDefinition('standard-rating', 'Standard rating', [base])
 const definition = buildProgramDefinition('standard', 'Standard program', qualification, rating)
 const program = createProgram(definition)
 
@@ -90,8 +90,8 @@ ineligible.rating // undefined — the rater was not called
 program.destroy()
 ```
 
-The array overload is declared FIRST (AGENTS §9.2) and performs one aggregate-aware
-batch execution:
+The array overload is declared FIRST and performs one aggregate-aware batch
+execution:
 
 ```ts
 const result = program.execute([
@@ -132,10 +132,10 @@ manager.destroy()
 | `ProgramErrorCode`        | type      | `'DUPLICATE' \| 'MISSING' \| 'DEFINITION' \| 'MISMATCH' \| 'RESERVED' \| 'DESTROYED'`.                                                         |
 | `ProgramInput`            | interface | `{ description?, notices?, authority?, aggregate?, metadata? }`.                                                                               |
 | `NoticeInput`             | interface | `{ scope? }` — optional fields accepted by `buildNotice`.                                                                                      |
-| `AggregateInput`          | interface | `{ by?, gates? }` — optional fields accepted by `buildAggregateDefinition`.                                                                    |
+| `AggregateInput`          | interface | `{ partition?, gates? }` — optional fields accepted by `buildAggregateDefinition`.                                                             |
 | `Notice`                  | interface | `{ id, message, scope? }` — an authored unconditional program notice.                                                                          |
 | `Determination`           | interface | `{ id, effect, applied, scope?, message?, premises }` — one notice or authority limit.                                                         |
-| `AggregateDefinition`     | interface | `{ fields, by?, gates? }` — batch sums (`FieldPath`s), optional partition field, optional gates.                                               |
+| `AggregateDefinition`     | interface | `{ fields, partition?, gates? }` — batch sums (`FieldPath` values), optional partition field, optional gates.                                  |
 | `AggregateProjection`     | interface | `{ count, sums, group? }` — private per-subject aggregate context.                                                                             |
 | `AggregateGroup`          | interface | `{ key, count, sums }` — one partition.                                                                                                        |
 | `Tally`                   | interface | `{ count, sums }` — one status tally.                                                                                                          |
@@ -148,10 +148,10 @@ manager.destroy()
 | `ProgramInterface`        | interface | `id` / `name` / `definition` / `emitter` + `execute` / `validate` / `destroy`.                                                                 |
 | `ProgramManagerEventMap`  | type      | `add(id)` · `remove(id)` · `destroy()`.                                                                                                        |
 | `ProgramManagerOptions`   | interface | `{ qualifier?, rater?, engine?, programs?, validate?, labels?, on?, error? }`.                                                                 |
-| `ProgramManagerInterface` | interface | Ordered program manager with singular/plural accessors and lifecycle.                                                                          |
+| `ProgramManagerInterface` | interface | `emitter` / `count` + `has` / `program` / `programs` / `add` / `remove` / `destroy`.                                                           |
 
 Every public data member is `readonly`, every optional key is omitted rather than
-`undefined`, and each name is single-word within its entity (AGENTS §4.1). Qualifier
+`undefined`, and each name is single-word within its entity. Qualifier
 supplies `Eligibility`, `Premise`, `QualificationDefinition`, and `QualificationResult`;
 rater supplies `RatingDefinition` and `RatingResult`; reason supplies
 `LogicalDefinition`, `Subject`, and the engine; contract supplies `FieldPath` and
@@ -163,19 +163,16 @@ rater supplies `RatingDefinition` and `RatingResult`; reason supplies
 | -------------------------- | ----- | --------------------------------------------------- |
 | `DEFAULT_PROGRAM_VALIDATE` | const | `true` — validate a definition at construction.     |
 | `STATUSES`                 | const | Every `Status` literal, in tally order.             |
-| `STATUS_PRECEDENCE`        | const | Stable status order for complete tally records.     |
 | `ELIGIBILITY_DECISIONS`    | const | Deterministic decision for each global eligibility. |
 | `AGGREGATE_KEY`            | const | `'aggregate'` — private aggregate context key.      |
 | `OUTCOME_KEY`              | const | `'outcome'` — private authority context key.        |
 
-Every constant is `Object.freeze`d. The two reserved keys exist only for composed
+Every constant is `Object.freeze`d. The reserved keys exist only for composed
 program execution — neither sibling package reserves these subject keys.
-`ELIGIBILITY_DECISIONS` maps each global eligibility to its decision, and
-`STATUS_PRECEDENCE` fixes the order of a complete tally record (it is not an opaque
-severity reducer for status). `STATUSES` declares status membership: the `Status`
-union and the `isStatus` guard both derive from it, so a status is authored once.
-`STATUS_PRECEDENCE` stays a separately authored ranking, because tally order is a
-decision about presentation rather than a restatement of membership.
+`ELIGIBILITY_DECISIONS` maps each global eligibility to its decision. `STATUSES`
+declares status membership for the `Status` union and the `isStatus` guard.
+`completeTallies` writes every `Status` member as a literal record, and `isTallies`
+checks membership through `STATUSES`.
 
 ### Errors
 
@@ -241,7 +238,7 @@ than delegating to reason's independently evolvable validation contract.
 
 `isProgramSums` checks every own string-named member, including non-enumerable
 members, as a JavaScript `number`; it ignores inherited and symbol-named members.
-`isTallies` requires every status in `STATUS_PRECEDENCE`, while admitting unknown
+`isTallies` requires every status in `STATUSES`, while admitting unknown
 members because `Record<Status, Tally>` does not forbid them.
 
 ```ts
@@ -260,7 +257,7 @@ import {
 isDecision('approved') // true
 isStatus('conditional') // true
 isNotice({ id: 'file', message: 'Subject retained for audit' }) // true
-isAggregateDefinition({ fields: ['amount'], by: 'location' }) // true
+isAggregateDefinition({ fields: ['amount'], partition: 'location' }) // true
 isProgramDefinition(definition) // true
 isDetermination({ id: 'audit', effect: 'notice', applied: true, premises: [] }) // true
 isProgramResult(program.execute(subject)) // true
@@ -276,7 +273,7 @@ checks semantic references and delegates nested validation to qualifier and rate
 The program helpers are pure orchestration leaves. They do not reproduce qualifier,
 rater, or reason logic — message interpolation and rich premise construction for
 authority and aggregate-gate rules reuse `@orkestrel/qualifier`'s own
-`interpolateMessage`, `findRule`, and `logicalPremises` (all public qualifier exports,
+`interpolateMessage`, `findRule`, and `ruleToPremises` (all public qualifier exports,
 generic over any `Rule`/`Subject`/`EvaluatorInterface`) rather than re-implementing
 them. `Program` owns one stateless `#evaluator` (created with `createEvaluator()`,
 never destroyed — it holds no state to tear down) purely to drive that reuse.
@@ -286,8 +283,8 @@ never destroyed — it holds no state to tear down) purely to drive that reuse.
 | `selectProgramLines`        | function | Select rating-line ids from scoped qualification eligibility.                                                                                   |
 | `deriveStatus`              | function | Derive final status from a program definition's rating policy plus qualification and rating evidence.                                           |
 | `decideEligibility`         | function | Map global eligibility to its deterministic decision.                                                                                           |
-| `buildNotices`              | function | Resolve authored notices into applied determinations.                                                                                           |
-| `buildLimits`               | function | Convert a logical result's applied rules (authority or aggregate gates) into `limit` determinations, with rich premises.                        |
+| `buildNoticeDeterminations` | function | Resolve authored notices into applied determinations.                                                                                           |
+| `buildLimitDeterminations`  | function | Convert a logical result's applied rules (authority or aggregate gates) into `limit` determinations, with rich premises.                        |
 | `buildProgramResult`        | function | Assemble a program result before or after rating.                                                                                               |
 | `buildOutcomeProjection`    | function | Build the private authority projection.                                                                                                         |
 | `buildQualificationSubject` | function | Add aggregate context to a private subject copy.                                                                                                |
@@ -305,7 +302,7 @@ never destroyed — it holds no state to tear down) purely to drive that reuse.
 | `buildEmptySums`            | function | Build a zero record for configured fields.                                                                                                      |
 | `buildEmptyTallies`         | function | Build complete zero tallies in status order.                                                                                                    |
 | `completeTallies`           | function | Fill missing statuses in a partial tally record.                                                                                                |
-| `tallyProgram`              | function | Add one subject and its fields to the result-status tally.                                                                                      |
+| `tallySubject`              | function | Add one subject and its fields to the result-status tally.                                                                                      |
 | `buildAggregateResult`      | function | Assemble one batch result, folding an optional aggregate-gate evaluation's `trace`/`errors` in and requiring it error-free for `success`.       |
 | `buildProgramDefinition`    | function | Build a fresh `ProgramDefinition`, copying every collection and omitting absent optional keys.                                                  |
 | `buildNotice`               | function | Build a fresh `Notice`, omitting an absent scope.                                                                                               |
@@ -316,6 +313,7 @@ map eligibility to a decision:
 
 ```ts
 import {
+	assertProgramDefinition,
 	assertProgramSubject,
 	decideEligibility,
 	hasReservedKey,
@@ -360,7 +358,7 @@ copies collections, and omits absent optional keys entirely:
 ```ts
 import { buildAggregateDefinition, buildNotice, buildProgramDefinition } from '@orkestrel/program'
 
-const aggregate = buildAggregateDefinition(['amount'], { by: 'location' })
+const aggregate = buildAggregateDefinition(['amount'], { partition: 'location' })
 const notice = buildNotice('audit', 'Program {{program}} executed')
 
 const definition = buildProgramDefinition('standard', 'Standard', qualification, rating, {
@@ -401,7 +399,7 @@ The package has no entity named `Rater`. Rating remains a sibling concern.
 
 #### `ProgramInterface`
 
-The array overload is declared first (AGENTS §9.2). `execute` is the correct verb
+The array overload is declared first. `execute` is the correct verb
 because it performs a composed workflow rather than qualification or rating alone.
 
 | Method     | Returns                              | Behavior                                                                       |
@@ -422,8 +420,7 @@ After destroy, `execute` and `validate` throw `ProgramError('DESTROYED')`.
 
 #### `ProgramManagerInterface`
 
-The manager follows the singular/plural accessor and batch-removal conventions
-(AGENTS §9).
+The manager follows the singular/plural accessor and batch-removal conventions.
 
 | Method     | Returns                         | Behavior                                                                                                         |
 | ---------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -533,7 +530,7 @@ A rating failure is not converted into ineligibility:
 - program status becomes `unrated`
 - program success becomes false because execution encountered technical errors
 - authority receives `rated: true` and `status: 'unrated'`
-- authority still runs and may emit `limit` determinations; the `decision` is suppressed because `status` is `unrated` (one of the four decision gates, below)
+- authority still runs and may emit `limit` determinations; the `decision` is suppressed because `status` is `unrated` (a decision gate, listed later)
 
 Scoped referral keeps global eligibility `eligible` while status remains `referral`, so a clean authority still yields an `approved` decision.
 
@@ -552,8 +549,8 @@ Notices are unconditional authored output. They:
 Authority is optional and runs last, over a private `outcome` projection of the
 assembled result — its id, eligibility, status, whether it rated, total, and scoped
 eligibility — never the mutable internal state of either sibling engine. Applied
-authority rules become `limit` determinations. A `decision` is present only when all
-four gates hold:
+authority rules become `limit` determinations. A `decision` is present only when
+every gate holds:
 
 1. an authority definition exists on the program
 2. execution SUCCEEDED — qualification, rating (when it ran), and authority all produced no errors
@@ -622,9 +619,6 @@ Status is explicit policy, not an opaque severity reducer. It resolves in this o
 4. no successful rating (including an AUTHORED rating with zero lines) → `unrated`
 5. applied condition or scoped restriction → `conditional`
 6. otherwise → `eligible`
-
-`STATUS_PRECEDENCE` exists only for complete tally output, never for hidden status
-logic.
 
 ### Decision
 
@@ -704,7 +698,7 @@ owned emitter.
 
 `Program.validate` (`validateProgramDefinition`) checks:
 
-1. exact shape via `isProgramDefinition` — this alone establishes rating structure and authority/gates shape, so validate performs no redundant re-check of either
+1. exact shape through `isProgramDefinition` — this alone establishes rating structure and authority/gates shape, so validate performs no redundant re-check of either
 2. non-empty id
 3. non-empty name
 4. nested qualification validation, delegated to the injected qualifier and prefixed `qualification:`
@@ -714,7 +708,7 @@ owned emitter.
 8. every notice scope names an existing rating line — same empty-line rule when no rating is authored
 9. authority validated semantically by the shared reason engine, prefixed `authority:`
 10. aggregate fields are unique and non-empty
-11. aggregate `by` is non-empty when present
+11. aggregate `partition` is non-empty when present
 12. aggregate gates validated semantically by the shared reason engine, prefixed `aggregate:`
 
 Always-on construction assertions run independently of `Program.validate` and of
@@ -767,7 +761,7 @@ the workflow entirely.
 ### Rating-only
 
 ```ts
-const qualification = qualificationDefinition('all', 'All risks', [])
+const qualification = createQualificationDefinition('all', 'All risks', [])
 const definition = buildProgramDefinition('rate-only', 'Rate only', qualification, rating)
 const program = createProgram(definition)
 
@@ -783,13 +777,13 @@ scoped exclusions, so every authored line rates unconditionally.
 ### Scoped exclusion
 
 ```ts
-const qualification = qualificationDefinition(
+const qualification = createQualificationDefinition(
 	'property-qualification',
 	'Property qualification',
 	[windGates],
 	{
 		rulings: [
-			rulingDefinition('frame', 'wind-gates', 'frame', 'restriction', {
+			createRuling('frame', 'wind-gates', 'frame', 'restriction', {
 				scope: 'wind',
 				message: 'Wind is unavailable for Frame construction',
 			}),
@@ -797,9 +791,9 @@ const qualification = qualificationDefinition(
 	},
 )
 
-const rating = ratingDefinition('property-rating', 'Property rating', [
-	lineDefinition('wind', 'Wind', windRate),
-	lineDefinition('exWind', 'Ex-Wind', exWindRate),
+const rating = buildRatingDefinition('property-rating', 'Property rating', [
+	buildLineDefinition('wind', 'Wind', windRate),
+	buildLineDefinition('exWind', 'Ex-Wind', exWindRate),
 ])
 
 const result = createProgram(
@@ -818,7 +812,7 @@ The wind definition is not evaluated.
 ### Scoped referral
 
 ```ts
-rulingDefinition('coastal-review', 'wind-gates', 'coastal-review', 'referral', {
+createRuling('coastal-review', 'wind-gates', 'coastal-review', 'referral', {
 	scope: 'wind',
 	message: 'Wind requires underwriter review',
 })
@@ -829,7 +823,7 @@ The wind line is omitted and program status is `referral`.
 ### Conditions
 
 ```ts
-rulingDefinition('protective-device', 'gates', 'protective-device', 'condition', {
+createRuling('protective-device', 'gates', 'protective-device', 'condition', {
 	message: 'Install an approved protective device',
 })
 ```
@@ -871,9 +865,9 @@ A conditional result receives a `limit` determination and no decision.
 ### Aggregate qualification
 
 ```ts
-const aggregate = buildAggregateDefinition(['total'], { by: 'location' })
+const aggregate = buildAggregateDefinition(['total'], { partition: 'location' })
 
-const qualification = qualificationDefinition(
+const qualification = createQualificationDefinition(
 	'portfolio-qualification',
 	'Portfolio qualification',
 	[
@@ -887,7 +881,7 @@ const qualification = qualificationDefinition(
 	],
 	{
 		rulings: [
-			rulingDefinition('location-cap', 'aggregate-gates', 'location-cap', 'restriction', {
+			createRuling('location-cap', 'aggregate-gates', 'location-cap', 'restriction', {
 				message: 'Location total exceeds the program maximum',
 			}),
 		],
@@ -935,7 +929,7 @@ rater.destroy()
 reason.destroy()
 ```
 
-Build an injected shared engine with `bail: false`, as shown above — matching the
+Build an injected shared engine with `bail: false`, as the preceding example shows — matching the
 engine `Program` creates when none is injected. Ordinary evaluation failures (a failed
 factor, an unresolvable field) surface as nested result evidence regardless of `bail`;
 `bail` governs only a reasoner's own internal throw, which `bail: true` rethrows

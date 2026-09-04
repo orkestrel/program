@@ -31,8 +31,8 @@ import {
 	standardRating,
 } from '../../setup.js'
 import { createHostileValues } from '@orkestrel/test'
-import { qualificationDefinition } from '@orkestrel/qualifier'
-import { ratingDefinition } from '@orkestrel/rater'
+import { createQualificationDefinition } from '@orkestrel/qualifier'
+import { buildRatingDefinition } from '@orkestrel/rater'
 import { createAtom, createLogicalDefinition, createRule } from '@orkestrel/reason'
 
 describe('validators', () => {
@@ -125,7 +125,7 @@ describe('validators', () => {
 			expect(
 				isAggregateDefinition(
 					buildAggregateDefinition(['amount'], {
-						by: 'location',
+						partition: 'location',
 						gates: createLogicalDefinition('gates', 'Gates', [
 							createRule(
 								'cap',
@@ -490,8 +490,8 @@ describe('validators', () => {
 			const definition = buildProgramDefinition(
 				'',
 				'',
-				qualificationDefinition('qualification', 'Qualification', []),
-				ratingDefinition('rating', 'Rating', []),
+				createQualificationDefinition('qualification', 'Qualification', []),
+				buildRatingDefinition('rating', 'Rating', []),
 			)
 			const program = createProgram(definition, { validate: false })
 			const result = program.validate()

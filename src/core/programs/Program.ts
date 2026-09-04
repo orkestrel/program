@@ -36,14 +36,14 @@ import {
 	buildAggregateRecord,
 	buildAggregateResult,
 	buildEmptyTallies,
-	buildLimits,
-	buildNotices,
+	buildLimitDeterminations,
+	buildNoticeDeterminations,
 	buildOutcomeProjection,
 	buildProgramResult,
 	buildQualificationSubject,
 	deriveStatus,
 	selectProgramLines,
-	tallyProgram,
+	tallySubject,
 	validateProgramDefinition,
 } from '../helpers.js'
 
@@ -83,10 +83,26 @@ export class Program implements ProgramInterface {
 	readonly #labels: Readonly<Record<string, string>> | undefined
 	#destroyed = false
 
+	/** Holds the authored id of the definition this program compiled. */
 	readonly id: string
+	/** Holds the authored display name of the definition this program compiled. */
 	readonly name: string
+	/** Holds the sealed snapshot of the authored definition this program compiled. */
 	readonly definition: ProgramDefinition
 
+	/**
+	 * Compiles one program from an authored definition.
+	 *
+	 * @param definition - The authored program definition
+	 * @param options - Optional injected qualifier, rater, engine, validation, labels, and emitter hooks
+	 * @throws {@link ProgramError} Thrown when the definition cannot be cloned or
+	 * sealed, or when validation is enabled and the definition fails
+	 * (`'DEFINITION'`).
+	 * @throws {@link ProgramError} Thrown when a ruling or notice scope names no
+	 * rating line (`'MISSING'`).
+	 * @throws {@link ProgramError} Thrown when the definition repeats a rating-line
+	 * or notice id (`'DUPLICATE'`).
+	 */
 	constructor(definition: ProgramDefinition, options?: ProgramOptions) {
 		let snapshot: ProgramDefinition
 		try {
@@ -141,12 +157,87 @@ export class Program implements ProgramInterface {
 		}
 	}
 
+	/**
+	 * Holds the typed observation surface carrying `qualify`, `rate`, `determine`,
+	 * `decide`, `execute`, `aggregate`, and `destroy`.
+	 *
+	 * @returns The emitter this program owns
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgram } from '@orkestrel/program'
+	 *
+	 * const program = createProgram(definition)
+	 * program.emitter.on('execute', (result) => result.status)
+	 * program.destroy()
+	 * ```
+	 */
 	get emitter(): EmitterInterface<ProgramEventMap> {
 		return this.#emitter
 	}
 
-	// Array overload first (AGENTS §9.2) so a subject list resolves to the batch form.
+	// Array overload first so a subject list resolves to the batch form.
+	/**
+	 * Executes a subject list as one aggregate-aware batch.
+	 *
+	 * @remarks
+	 * Every subject is asserted before any work runs, so a reserved key in the last
+	 * subject rejects the batch before the first one qualifies. The batch sums,
+	 * partitions, and per-subject aggregate projections are computed next, each
+	 * subject executes in input order, every result tallies by status, and optional
+	 * aggregate gates run last against the batch aggregate record.
+	 *
+	 * @param subjects - The subjects to execute, in input order
+	 * @returns A fresh aggregate result carrying every subject result, the batch
+	 * determinations, partitions, tallies, and sums
+	 * @throws {@link ProgramError} Thrown when the program has been destroyed
+	 * (`'DESTROYED'`).
+	 * @throws {@link ProgramError} Thrown when a subject is not a record, or when a
+	 * borrowed qualifier, rater, or reason engine returns an off-contract result
+	 * (`'MISMATCH'`).
+	 * @throws {@link ProgramError} Thrown when a subject already carries the
+	 * `aggregate` or `outcome` key (`'RESERVED'`).
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgram } from '@orkestrel/program'
+	 *
+	 * const program = createProgram(definition)
+	 * program.execute([{ id: 'risk-1', licensed: true }]).count // 1
+	 * program.destroy()
+	 * ```
+	 */
 	execute(subjects: readonly Subject[]): AggregateResult
+	/**
+	 * Executes one subject through the composed qualify-rate-determine workflow.
+	 *
+	 * @remarks
+	 * Qualification decides whether rating happens: a globally ineligible, referred,
+	 * or failed subject never reaches the rater, and a scoped ineligibility removes
+	 * only its line before the first rating call. The rater always receives the
+	 * ORIGINAL subject. Notices, status, optional authority, and the optional
+	 * decision follow, in that order.
+	 *
+	 * @param subject - The subject to execute
+	 * @returns A fresh program result carrying the nested qualification and rating
+	 * evidence, determinations, status, and optional decision
+	 * @throws {@link ProgramError} Thrown when the program has been destroyed
+	 * (`'DESTROYED'`).
+	 * @throws {@link ProgramError} Thrown when the subject is not a record, or when a
+	 * borrowed qualifier, rater, or reason engine returns an off-contract result
+	 * (`'MISMATCH'`).
+	 * @throws {@link ProgramError} Thrown when the subject already carries the
+	 * `aggregate` or `outcome` key (`'RESERVED'`).
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgram } from '@orkestrel/program'
+	 *
+	 * const program = createProgram(definition)
+	 * program.execute({ id: 'risk-1', licensed: true }).status // 'eligible'
+	 * program.destroy()
+	 * ```
+	 */
 	execute(subject: Subject): ProgramResult
 	execute(input: Subject | readonly Subject[]): ProgramResult | AggregateResult {
 		this.#alive()
@@ -154,11 +245,52 @@ export class Program implements ProgramInterface {
 		return this.#subject(input)
 	}
 
+	/**
+	 * Validates this program's definition and every nested definition.
+	 *
+	 * @remarks
+	 * Exact shape is `isProgramDefinition`'s job. This checks the meaning: non-empty id
+	 * and name, every ruling and notice scope naming a rating line, unique non-empty
+	 * aggregate fields, and a non-empty partition field when present. Nested
+	 * qualification validation is delegated to the injected qualifier, and authority
+	 * and aggregate-gate validation to the shared reason engine.
+	 *
+	 * @returns A fresh validation result carrying `valid`, `errors`, and `warnings`
+	 * @throws {@link ProgramError} Thrown when the program has been destroyed
+	 * (`'DESTROYED'`).
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgram } from '@orkestrel/program'
+	 *
+	 * const program = createProgram(definition, { validate: false })
+	 * program.validate().valid // true
+	 * program.destroy()
+	 * ```
+	 */
 	validate(): ProgramValidationResult {
 		this.#alive()
 		return validateProgramDefinition(this.definition, this.#qualifier, this.#engine)
 	}
 
+	/**
+	 * Destroys this program, idempotently.
+	 *
+	 * @remarks
+	 * The destroyed flag is set BEFORE any teardown or the `destroy` event, so a
+	 * listener re-entering `destroy` is a no-op. An owned qualifier, rater, and reason
+	 * engine are destroyed; an injected one stays caller-owned. The emitter is torn
+	 * down last, and stays reachable afterwards.
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgram } from '@orkestrel/program'
+	 *
+	 * const program = createProgram(definition)
+	 * program.destroy()
+	 * program.destroy() // a second call is a no-op
+	 * ```
+	 */
 	destroy(): void {
 		if (this.#destroyed) return
 		this.#destroyed = true
@@ -207,7 +339,7 @@ export class Program implements ProgramInterface {
 		qualification: QualificationResult,
 		rating?: RatingResult,
 	): ProgramResult {
-		const notices = buildNotices(this.definition.notices ?? [], subject)
+		const notices = buildNoticeDeterminations(this.definition.notices ?? [], subject)
 		for (const notice of notices) this.#emitter.emit('determine', notice)
 
 		const status = deriveStatus(this.definition, qualification, rating)
@@ -225,7 +357,13 @@ export class Program implements ProgramInterface {
 			throw new ProgramError('MISMATCH', 'Authority returned invalid logical result', authority.id)
 		}
 
-		const limits = buildLimits(authority, resolved, outcome, this.#evaluator, this.#labels)
+		const limits = buildLimitDeterminations(
+			authority,
+			resolved,
+			outcome,
+			this.#evaluator,
+			this.#labels,
+		)
 		for (const limit of limits) this.#emitter.emit('determine', limit)
 
 		result = buildProgramResult(
@@ -248,15 +386,15 @@ export class Program implements ProgramInterface {
 		const definition = this.definition.aggregate
 		const fields = [...(definition?.fields ?? [])]
 		const sums = aggregateSums(subjects, fields)
-		const groups = aggregateGroups(subjects, fields, definition?.by)
+		const groups = aggregateGroups(subjects, fields, definition?.partition)
 		let tallies = buildEmptyTallies(fields)
 		const results = subjects.map((subject) => {
 			const projection =
 				definition === undefined
 					? undefined
-					: buildAggregateProjection(subject, subjects.length, sums, groups, definition.by)
+					: buildAggregateProjection(subject, subjects.length, sums, groups, definition.partition)
 			const result = this.#subject(subject, projection)
-			tallies = tallyProgram(tallies, result, subject, fields)
+			tallies = tallySubject(tallies, result, subject, fields)
 			return result
 		})
 
@@ -292,7 +430,13 @@ export class Program implements ProgramInterface {
 			)
 		}
 
-		const determinations = buildLimits(gates, resolved, record, this.#evaluator, this.#labels)
+		const determinations = buildLimitDeterminations(
+			gates,
+			resolved,
+			record,
+			this.#evaluator,
+			this.#labels,
+		)
 		for (const determination of determinations) this.#emitter.emit('determine', determination)
 		return { determinations, resolved }
 	}

@@ -1,5 +1,9 @@
 import type { LineDefinition, RatingResult, RaterInterface, RaterOptions } from '@orkestrel/rater'
-import type { QualificationResult, QualifierInterface } from '@orkestrel/qualifier'
+import type {
+	QualificationDefinition,
+	QualificationResult,
+	QualifierInterface,
+} from '@orkestrel/qualifier'
 import type {
 	Definition,
 	LogicalDefinition,
@@ -7,13 +11,20 @@ import type {
 	ReasonInterface,
 	ReasonOptions,
 	ReasonResult,
+	ReasonValidationResult,
 	ReasonerInterface,
 	Reasoning,
 	Subject,
 } from '@orkestrel/reason'
 import type { ProgramDefinition, ProgramEventMap, ProgramInterface } from '@src/core'
-import { createQualifier, qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
-import { createRater, isRatingDefinition, lineDefinition, ratingDefinition } from '@orkestrel/rater'
+import { isArray } from '@orkestrel/contract'
+import { createQualificationDefinition, createQualifier, createRuling } from '@orkestrel/qualifier'
+import {
+	buildLineDefinition,
+	buildRatingDefinition,
+	createRater,
+	isRatingDefinition,
+} from '@orkestrel/rater'
 import {
 	createAtom,
 	createFactorGroup,
@@ -74,6 +85,64 @@ class FixedReason implements ReasonInterface {
 	}
 
 	destroy(): void {
+		this.#inner.destroy()
+	}
+}
+
+class RecordingReason implements RecordingEngineInterface {
+	readonly #inner: ReasonInterface
+	#destroyCount = 0
+
+	constructor(options?: ReasonOptions) {
+		this.#inner = createReason({
+			reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
+			bail: false,
+			...options,
+		})
+	}
+
+	get emitter() {
+		return this.#inner.emitter
+	}
+
+	get destroyCount(): number {
+		return this.#destroyCount
+	}
+
+	reason(subjects: readonly Subject[], definition: Definition): readonly ReasonResult[]
+	reason(subject: Subject, definition: Definition): ReasonResult
+	reason(
+		subjectsOrSubject: readonly Subject[] | Subject,
+		definition: Definition,
+	): readonly ReasonResult[] | ReasonResult {
+		if (isArray<Subject>(subjectsOrSubject)) {
+			return this.#inner.reason(subjectsOrSubject, definition)
+		}
+		return this.#inner.reason(subjectsOrSubject, definition)
+	}
+
+	register(reasoner: ReasonerInterface): void {
+		this.#inner.register(reasoner)
+	}
+
+	reasoner(reasoning: Reasoning): ReasonerInterface | undefined {
+		return this.#inner.reasoner(reasoning)
+	}
+
+	reasoners(): readonly ReasonerInterface[] {
+		return this.#inner.reasoners()
+	}
+
+	supports(reasoning: Reasoning): boolean {
+		return this.#inner.supports(reasoning)
+	}
+
+	validate(definition: Definition) {
+		return this.#inner.validate(definition)
+	}
+
+	destroy(): void {
+		this.#destroyCount += 1
 		this.#inner.destroy()
 	}
 }
@@ -328,6 +397,81 @@ class ResultClass {
 	}
 }
 
+class OffContractValidationResult implements ReasonValidationResult {
+	get valid(): boolean {
+		return true
+	}
+
+	get errors(): readonly string[] {
+		return structuredClone(this).errors
+	}
+
+	get warnings(): readonly string[] {
+		return []
+	}
+}
+
+class OffContractQualifier implements QualifierInterface {
+	readonly #inner = createQualifier()
+
+	get emitter() {
+		return this.#inner.emitter
+	}
+
+	qualify(_subject: Subject, _definition: QualificationDefinition): QualificationResult {
+		throw new Error('Unexpected qualification')
+	}
+
+	validate(_definition: QualificationDefinition): ReasonValidationResult {
+		return new OffContractValidationResult()
+	}
+
+	destroy(): void {
+		this.#inner.destroy()
+	}
+}
+
+class OffContractReason implements ReasonInterface {
+	readonly #inner = createReason()
+
+	get emitter() {
+		return this.#inner.emitter
+	}
+
+	reason(subjects: readonly Subject[], definition: Definition): readonly ReasonResult[]
+	reason(subject: Subject, definition: Definition): ReasonResult
+	reason(
+		_subjectsOrSubject: readonly Subject[] | Subject,
+		_definition: Definition,
+	): readonly ReasonResult[] | ReasonResult {
+		throw new Error('Unexpected reasoning')
+	}
+
+	register(_reasoner: ReasonerInterface): void {
+		throw new Error('Unexpected reasoner registration')
+	}
+
+	reasoner(_reasoning: Reasoning): ReasonerInterface | undefined {
+		return undefined
+	}
+
+	reasoners(): readonly ReasonerInterface[] {
+		return []
+	}
+
+	supports(_reasoning: Reasoning): boolean {
+		return false
+	}
+
+	validate(_definition: Definition): ReasonValidationResult {
+		return new OffContractValidationResult()
+	}
+
+	destroy(): void {
+		this.#inner.destroy()
+	}
+}
+
 export function createFixedQualifier(result: QualificationResult): QualifierInterface {
 	const inner = createQualifier()
 	return {
@@ -385,6 +529,34 @@ export function createResultClass(record: object): object {
 	return new ResultClass(record)
 }
 
+export function createOffContractValidationResult(): ReasonValidationResult {
+	return new OffContractValidationResult()
+}
+
+export function createOffContractQualifier(): QualifierInterface {
+	return new OffContractQualifier()
+}
+
+export function createOffContractReason(): ReasonInterface {
+	return new OffContractReason()
+}
+
+export function buildQualificationResult(
+	overrides: Partial<QualificationResult> & Pick<QualificationResult, 'eligibility'>,
+): QualificationResult {
+	return {
+		id: 'qualification',
+		name: 'Qualification',
+		scopes: {},
+		findings: [],
+		derivations: [],
+		success: true,
+		trace: [],
+		errors: [],
+		...overrides,
+	}
+}
+
 export interface RecordingRaterCall {
 	readonly lines: readonly LineDefinition[]
 	readonly subject: Subject
@@ -435,53 +607,7 @@ export interface RecordingEngineInterface extends ReasonInterface {
 }
 
 export function createRecordingEngine(options?: ReasonOptions): RecordingEngineInterface {
-	const inner = createReason({
-		reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
-		bail: false,
-		...options,
-	})
-	let destroyCount = 0
-
-	function reason(subjects: readonly Subject[], definition: Definition): readonly ReasonResult[]
-	function reason(subject: Subject, definition: Definition): ReasonResult
-	function reason(
-		subjectsOrSubject: readonly Subject[] | Subject,
-		definition: Definition,
-	): readonly ReasonResult[] | ReasonResult {
-		if (isSubjectArray(subjectsOrSubject)) {
-			return inner.reason(subjectsOrSubject, definition)
-		}
-		return inner.reason(subjectsOrSubject, definition)
-	}
-
-	return {
-		get emitter() {
-			return inner.emitter
-		},
-		reason,
-		register(reasoner) {
-			inner.register(reasoner)
-		},
-		reasoner(reasoning) {
-			return inner.reasoner(reasoning)
-		},
-		reasoners() {
-			return inner.reasoners()
-		},
-		supports(reasoning) {
-			return inner.supports(reasoning)
-		},
-		validate(definition) {
-			return inner.validate(definition)
-		},
-		destroy() {
-			destroyCount += 1
-			inner.destroy()
-		},
-		get destroyCount() {
-			return destroyCount
-		},
-	}
+	return new RecordingReason(options)
 }
 
 export interface EventRecorderInterface {
@@ -491,16 +617,27 @@ export interface EventRecorderInterface {
 
 export function recordEvents(program: ProgramInterface): EventRecorderInterface {
 	const names: Array<keyof ProgramEventMap> = []
-	const record = (name: keyof ProgramEventMap) => {
-		names.push(name)
-	}
-	program.emitter.on('qualify', () => record('qualify'))
-	program.emitter.on('rate', () => record('rate'))
-	program.emitter.on('determine', () => record('determine'))
-	program.emitter.on('decide', () => record('decide'))
-	program.emitter.on('execute', () => record('execute'))
-	program.emitter.on('aggregate', () => record('aggregate'))
-	program.emitter.on('destroy', () => record('destroy'))
+	program.emitter.on('qualify', () => {
+		names.push('qualify')
+	})
+	program.emitter.on('rate', () => {
+		names.push('rate')
+	})
+	program.emitter.on('determine', () => {
+		names.push('determine')
+	})
+	program.emitter.on('decide', () => {
+		names.push('decide')
+	})
+	program.emitter.on('execute', () => {
+		names.push('execute')
+	})
+	program.emitter.on('aggregate', () => {
+		names.push('aggregate')
+	})
+	program.emitter.on('destroy', () => {
+		names.push('destroy')
+	})
 	return {
 		get names() {
 			return names
@@ -523,17 +660,19 @@ export const baseRate = createQuantitativeDefinition('base-rate', 'Base rate', [
 	createFactorGroup('amount', 'sum', [createStaticFactor('minimum', 100)]),
 ])
 
-export const baseLine = lineDefinition('base', 'Base premium', baseRate)
+export const baseLine = buildLineDefinition('base', 'Base premium', baseRate)
 
-export const standardRating = ratingDefinition('standard-rating', 'Standard rating', [baseLine])
+export const standardRating = buildRatingDefinition('standard-rating', 'Standard rating', [
+	baseLine,
+])
 
-export const standardQualification = qualificationDefinition(
+export const standardQualification = createQualificationDefinition(
 	'standard-qualification',
 	'Standard qualification',
 	[licensedGates],
 	{
 		rulings: [
-			rulingDefinition('license', 'gates', 'licensed', 'restriction', {
+			createRuling('license', 'gates', 'licensed', 'restriction', {
 				message: 'A license is required',
 			}),
 		],
@@ -547,17 +686,22 @@ export const standardProgramDefinition = buildProgramDefinition(
 	standardRating,
 )
 
+/** Build a distinctly-identified program over the standard qualification and rating pair. */
+export function buildStandardProgramDefinition(id: string): ProgramDefinition {
+	return buildProgramDefinition(id, `Program ${id}`, standardQualification, standardRating)
+}
+
 export const eligibleSubject: Subject = { id: 'risk-eligible', licensed: true }
 
 export const ineligibleSubject: Subject = { id: 'risk-ineligible', licensed: false }
 
-const referralQualification = qualificationDefinition(
+const referralQualification = createQualificationDefinition(
 	'referral-qualification',
 	'Referral qualification',
 	[licensedGates],
 	{
 		rulings: [
-			rulingDefinition('review', 'gates', 'licensed', 'referral', {
+			createRuling('review', 'gates', 'licensed', 'referral', {
 				message: 'Underwriter review required',
 			}),
 		],
@@ -592,17 +736,17 @@ const exWindRate = createQuantitativeDefinition('ex-wind-rate', 'Ex-wind rate', 
 export const scopedProgramDefinition = buildProgramDefinition(
 	'property',
 	'Property program',
-	qualificationDefinition('property-qualification', 'Property qualification', [windGates], {
+	createQualificationDefinition('property-qualification', 'Property qualification', [windGates], {
 		rulings: [
-			rulingDefinition('frame', 'wind-gates', 'frame', 'restriction', {
+			createRuling('frame', 'wind-gates', 'frame', 'restriction', {
 				scope: 'wind',
 				message: 'Wind is unavailable for Frame construction',
 			}),
 		],
 	}),
-	ratingDefinition('property-rating', 'Property rating', [
-		lineDefinition('wind', 'Wind', windRate),
-		lineDefinition('exWind', 'Ex-Wind', exWindRate),
+	buildRatingDefinition('property-rating', 'Property rating', [
+		buildLineDefinition('wind', 'Wind', windRate),
+		buildLineDefinition('exWind', 'Ex-Wind', exWindRate),
 	]),
 )
 
@@ -627,7 +771,7 @@ const failingPass = createQuantitativeDefinition('failing-pass', 'Failing pass',
 export const failedQualificationProgramDefinition = buildProgramDefinition(
 	'failed-qualification',
 	'Failed qualification program',
-	qualificationDefinition('failed-qualification', 'Failed qualification', [failingPass]),
+	createQualificationDefinition('failed-qualification', 'Failed qualification', [failingPass]),
 	standardRating,
 )
 
@@ -639,13 +783,13 @@ const conditionalGates = createLogicalDefinition('conditional-gates', 'Condition
 	),
 ])
 
-const conditionalQualification = qualificationDefinition(
+const conditionalQualification = createQualificationDefinition(
 	'conditional-qualification',
 	'Conditional qualification',
 	[conditionalGates],
 	{
 		rulings: [
-			rulingDefinition('protective-device', 'conditional-gates', 'present', 'condition', {
+			createRuling('protective-device', 'conditional-gates', 'present', 'condition', {
 				message: 'Install an approved protective device',
 			}),
 		],
@@ -664,14 +808,14 @@ export const conditionalSubject: Subject = { id: 'risk-conditional' }
 export const emptyLinesProgramDefinition = buildProgramDefinition(
 	'empty-lines',
 	'Empty lines program',
-	qualificationDefinition('empty-qualification', 'Empty qualification', []),
-	ratingDefinition('empty-rating', 'Empty rating', []),
+	createQualificationDefinition('empty-qualification', 'Empty qualification', []),
+	buildRatingDefinition('empty-rating', 'Empty rating', []),
 )
 
 export const emptyCollectionsProgramDefinition = buildProgramDefinition(
 	'empty-collections',
 	'Empty collections program',
-	qualificationDefinition('bare-qualification', 'Bare qualification', []),
+	createQualificationDefinition('bare-qualification', 'Bare qualification', []),
 	standardRating,
 )
 
@@ -720,22 +864,22 @@ export const cleanAuthority = createLogicalDefinition('authority', 'Clean author
 export const scopedReferralProgramDefinition = buildProgramDefinition(
 	'scoped-referral',
 	'Scoped referral program',
-	qualificationDefinition(
+	createQualificationDefinition(
 		'scoped-referral-qualification',
 		'Scoped referral qualification',
 		[coastalGates],
 		{
 			rulings: [
-				rulingDefinition('coastal-review', 'coastal-gates', 'coastal', 'referral', {
+				createRuling('coastal-review', 'coastal-gates', 'coastal', 'referral', {
 					scope: 'wind',
 					message: 'Wind requires underwriter review',
 				}),
 			],
 		},
 	),
-	ratingDefinition('scoped-referral-rating', 'Scoped referral rating', [
-		lineDefinition('wind', 'Wind', windRate),
-		lineDefinition('exWind', 'Ex-Wind', exWindRate),
+	buildRatingDefinition('scoped-referral-rating', 'Scoped referral rating', [
+		buildLineDefinition('wind', 'Wind', windRate),
+		buildLineDefinition('exWind', 'Ex-Wind', exWindRate),
 	]),
 	{ authority: cleanAuthority },
 )
@@ -755,7 +899,7 @@ export const batchAggregateProgramDefinition = buildProgramDefinition(
 	standardQualification,
 	standardRating,
 	{
-		aggregate: buildAggregateDefinition(['amount'], { by: 'location' }),
+		aggregate: buildAggregateDefinition(['amount'], { partition: 'location' }),
 	},
 )
 
@@ -798,21 +942,21 @@ export function buildCarrierProgram(): ProgramDefinition {
 		createFactorGroup('amount', 'sum', [createStaticFactor('flat', 10)]),
 	])
 
-	const qualification = qualificationDefinition(
+	const qualification = createQualificationDefinition(
 		'carrier-qualification',
 		'Carrier qualification',
 		[gates],
 		{
 			rulings: [
-				rulingDefinition('license', 'carrier-gates', 'licensed', 'restriction', {
+				createRuling('license', 'carrier-gates', 'licensed', 'restriction', {
 					message: 'License required',
 				}),
 			],
 		},
 	)
 
-	const rating = ratingDefinition('carrier-rating', 'Carrier rating', [
-		lineDefinition('premium', 'Premium', amountRate),
+	const rating = buildRatingDefinition('carrier-rating', 'Carrier rating', [
+		buildLineDefinition('premium', 'Premium', amountRate),
 	])
 
 	return buildProgramDefinition('carrier', 'Carrier program', qualification, rating, {
@@ -850,7 +994,7 @@ export function buildBrokenLogicalDefinition(id: string): LogicalDefinition {
 	])
 }
 
-export const zeroPassQualification = qualificationDefinition(
+export const zeroPassQualification = createQualificationDefinition(
 	'zero-pass-qualification',
 	'Zero pass qualification',
 	[],
@@ -939,26 +1083,26 @@ const allScopedGates = createLogicalDefinition('all-scoped-gates', 'All scoped g
 export const allLinesScopedOutProgramDefinition = buildProgramDefinition(
 	'all-scoped',
 	'All lines scoped out program',
-	qualificationDefinition(
+	createQualificationDefinition(
 		'all-scoped-qualification',
 		'All scoped qualification',
 		[allScopedGates],
 		{
 			rulings: [
-				rulingDefinition('frame-wind', 'all-scoped-gates', 'frame', 'restriction', {
+				createRuling('frame-wind', 'all-scoped-gates', 'frame', 'restriction', {
 					scope: 'wind',
 					message: 'Wind is unavailable for Frame construction',
 				}),
-				rulingDefinition('frame-exwind', 'all-scoped-gates', 'frame', 'restriction', {
+				createRuling('frame-exwind', 'all-scoped-gates', 'frame', 'restriction', {
 					scope: 'exWind',
 					message: 'Ex-wind is unavailable for Frame construction',
 				}),
 			],
 		},
 	),
-	ratingDefinition('all-scoped-rating', 'All scoped rating', [
-		lineDefinition('wind', 'Wind', windRate),
-		lineDefinition('exWind', 'Ex-Wind', exWindRate),
+	buildRatingDefinition('all-scoped-rating', 'All scoped rating', [
+		buildLineDefinition('wind', 'Wind', windRate),
+		buildLineDefinition('exWind', 'Ex-Wind', exWindRate),
 	]),
 )
 
@@ -978,15 +1122,9 @@ export const sharedIdBatchSubjects: Subject[] = [
 	{ id: 'shared', licensed: false, amount: 7, location: 'west' },
 ]
 
-/** Build a subject carrying its own `__proto__` / `constructor` OWN keys via JSON parsing. */
+/** Build a subject carrying its own `__proto__` / `constructor` OWN keys through JSON parsing. */
 export function buildHostileSubject(): Subject {
 	return JSON.parse(
 		'{"id":"hostile","licensed":true,"__proto__":{"polluted":true},"constructor":{"polluted":true}}',
 	)
-}
-
-/** Whether a repository-relative Vue SFC path belongs to the private browser application. */
-export function isBrowserVuePath(path: string): boolean {
-	const normalized = path.replaceAll('\\', '/')
-	return normalized.startsWith('app/browser/')
 }

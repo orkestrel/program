@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createProgram } from '@src/core'
 import { createQualifier } from '@orkestrel/qualifier'
-import { createRater, lineDefinition, ratingDefinition } from '@orkestrel/rater'
+import { buildLineDefinition, buildRatingDefinition, createRater } from '@orkestrel/rater'
 import {
 	createLogicalReasoner,
 	createQuantitativeReasoner,
@@ -10,7 +10,7 @@ import {
 	createQuantitativeDefinition,
 	createStaticFactor,
 } from '@orkestrel/reason'
-import { STATUS_PRECEDENCE } from '@src/core'
+import { STATUSES } from '@src/core'
 import type { Subject } from '@orkestrel/reason'
 import { captureError, createRecorder } from '@orkestrel/test'
 import {
@@ -61,7 +61,7 @@ import {
 	unratedAuthority,
 } from '../../../setup.js'
 import { buildProgramDefinition, buildNotice } from '@src/core'
-import { qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
+import { createQualificationDefinition, createRuling } from '@orkestrel/qualifier'
 import { createLogicalDefinition, createRule, createAtom } from '@orkestrel/reason'
 import { standardQualification, standardRating } from '../../../setup.js'
 
@@ -247,8 +247,8 @@ describe('Program', () => {
 				'owned',
 				'Owned program',
 				standardQualification,
-				ratingDefinition('owned-rating', 'Owned rating', [
-					lineDefinition(
+				buildRatingDefinition('owned-rating', 'Owned rating', [
+					buildLineDefinition(
 						'owned-line',
 						'Owned line',
 						createQuantitativeDefinition('owned-rate', 'Owned rate', [
@@ -402,28 +402,21 @@ describe('Program', () => {
 	describe('safety and determinism', () => {
 		it('throws RESERVED with the offending key as context', () => {
 			const program = createProgram(standardProgramDefinition)
-			let error: unknown
-			try {
-				program.execute({ id: 'x', aggregate: {} })
-				expect.unreachable('expected RESERVED')
-			} catch (caught) {
-				error = caught
-			}
-			expect(error).toMatchObject({ code: 'RESERVED', context: 'aggregate' })
+			expect(captureError(() => program.execute({ id: 'x', aggregate: {} }))).toMatchObject({
+				code: 'RESERVED',
+				context: 'aggregate',
+			})
 			program.destroy()
 		})
 
 		it('throws MISMATCH for a non-record subject', () => {
 			const program = createProgram(standardProgramDefinition)
-			let error: unknown
-			try {
-				const subject: Subject = JSON.parse('"subject"')
-				program.execute(subject)
-				expect.unreachable('expected MISMATCH')
-			} catch (caught) {
-				error = caught
-			}
-			expect(error).toMatchObject({ code: 'MISMATCH' })
+			expect(
+				captureError(() => {
+					const subject: Subject = JSON.parse('"subject"')
+					return program.execute(subject)
+				}),
+			).toMatchObject({ code: 'MISMATCH' })
 			program.destroy()
 		})
 
@@ -431,8 +424,8 @@ describe('Program', () => {
 			const definition = buildProgramDefinition(
 				'missing',
 				'Missing',
-				qualificationDefinition('q', 'Q', [], {
-					rulings: [rulingDefinition('r', 'p', 'r', 'restriction', { scope: 'ghost' })],
+				createQualificationDefinition('q', 'Q', [], {
+					rulings: [createRuling('r', 'p', 'r', 'restriction', { scope: 'ghost' })],
 				}),
 				standardRating,
 			)
@@ -442,33 +435,22 @@ describe('Program', () => {
 			const withPass = buildProgramDefinition(
 				'missing',
 				'Missing',
-				qualificationDefinition('q', 'Q', [gates], {
+				createQualificationDefinition('q', 'Q', [gates], {
 					...(definition.qualification.rulings === undefined
 						? {}
 						: { rulings: definition.qualification.rulings }),
 				}),
 				standardRating,
 			)
-			let error: unknown
-			try {
-				createProgram(withPass)
-				expect.unreachable('expected MISSING')
-			} catch (caught) {
-				error = caught
-			}
-			expect(error).toMatchObject({ code: 'MISSING', context: 'missing' })
+			expect(captureError(() => createProgram(withPass))).toMatchObject({
+				code: 'MISSING',
+				context: 'missing',
+			})
 		})
 
 		it('throws DEFINITION for a malformed definition', () => {
 			const definition = buildProgramDefinition('', '', standardQualification, standardRating)
-			let error: unknown
-			try {
-				createProgram(definition)
-				expect.unreachable('expected DEFINITION')
-			} catch (caught) {
-				error = caught
-			}
-			expect(error).toMatchObject({ code: 'DEFINITION' })
+			expect(captureError(() => createProgram(definition))).toMatchObject({ code: 'DEFINITION' })
 		})
 
 		it('is deterministic and leaves the caller subject unmutated', () => {
@@ -629,14 +611,9 @@ describe('Program', () => {
 		it('throws DESTROYED after destroy', () => {
 			const program = createProgram(standardProgramDefinition)
 			program.destroy()
-			let error: unknown
-			try {
-				program.execute(eligibleSubject)
-				expect.unreachable('expected DESTROYED')
-			} catch (caught) {
-				error = caught
-			}
-			expect(error).toMatchObject({ code: 'DESTROYED' })
+			expect(captureError(() => program.execute(eligibleSubject))).toMatchObject({
+				code: 'DESTROYED',
+			})
 			program.destroy()
 		})
 
@@ -745,14 +722,9 @@ describe('Program', () => {
 		})
 
 		it('throws MISSING at construction for a notice scoped to a non-existent line', () => {
-			let error: unknown
-			try {
-				createProgram(buildEligibilityOnlyNoticeMissingScopeDefinition())
-				expect.unreachable('expected MISSING')
-			} catch (caught) {
-				error = caught
-			}
-			expect(error).toMatchObject({ code: 'MISSING' })
+			expect(
+				captureError(() => createProgram(buildEligibilityOnlyNoticeMissingScopeDefinition())),
+			).toMatchObject({ code: 'MISSING' })
 		})
 
 		it('never resolves unrated in a batch and never fires rate', () => {
@@ -779,14 +751,9 @@ describe('Program', () => {
 			const rater = createRecordingRater()
 			const program = createProgram(standardProgramDefinition, { rater })
 			const events = recordEvents(program)
-			let error: unknown
-			try {
-				program.execute([eligibleSubject, { id: 'x', aggregate: {} }])
-				expect.unreachable('expected RESERVED')
-			} catch (caught) {
-				error = caught
-			}
-			expect(error).toMatchObject({ code: 'RESERVED' })
+			expect(
+				captureError(() => program.execute([eligibleSubject, { id: 'x', aggregate: {} }])),
+			).toMatchObject({ code: 'RESERVED' })
 			expect(rater.count).toBe(0)
 			expect(events.names).toHaveLength(0)
 			program.destroy()
@@ -836,14 +803,9 @@ describe('Program', () => {
 			const result = program.execute(eligibleSubject)
 			expect(result.status).toBe('eligible')
 			expect(destroyed.count).toBe(1)
-			let error: unknown
-			try {
-				program.execute(eligibleSubject)
-				expect.unreachable('expected DESTROYED')
-			} catch (caught) {
-				error = caught
-			}
-			expect(error).toMatchObject({ code: 'DESTROYED' })
+			expect(captureError(() => program.execute(eligibleSubject))).toMatchObject({
+				code: 'DESTROYED',
+			})
 		})
 
 		it('supports one re-entrant execute call from within an execute listener', () => {
@@ -884,7 +846,11 @@ describe('Program', () => {
 				buildProgramDefinition(
 					'numeric-edges',
 					'Numeric edges',
-					qualificationDefinition('numeric-edges-qualification', 'Numeric edges qualification', []),
+					createQualificationDefinition(
+						'numeric-edges-qualification',
+						'Numeric edges qualification',
+						[],
+					),
 					undefined,
 					{
 						aggregate: {
@@ -911,7 +877,11 @@ describe('Program', () => {
 				buildProgramDefinition(
 					'nested-field',
 					'Nested field',
-					qualificationDefinition('nested-field-qualification', 'Nested field qualification', []),
+					createQualificationDefinition(
+						'nested-field-qualification',
+						'Nested field qualification',
+						[],
+					),
 					undefined,
 					{ aggregate: { fields: [['premium', 'total']] } },
 				),
@@ -932,13 +902,13 @@ describe('Program', () => {
 				buildProgramDefinition(
 					'group-semantics',
 					'Group semantics',
-					qualificationDefinition(
+					createQualificationDefinition(
 						'group-semantics-qualification',
 						'Group semantics qualification',
 						[],
 					),
 					undefined,
-					{ aggregate: { fields: ['amount'], by: 'location' } },
+					{ aggregate: { fields: ['amount'], partition: 'location' } },
 				),
 			)
 			const subjects: Subject[] = [
@@ -956,9 +926,13 @@ describe('Program', () => {
 				buildProgramDefinition(
 					'group-collide',
 					'Group collide',
-					qualificationDefinition('group-collide-qualification', 'Group collide qualification', []),
+					createQualificationDefinition(
+						'group-collide-qualification',
+						'Group collide qualification',
+						[],
+					),
 					undefined,
-					{ aggregate: { fields: ['amount'], by: 'code' } },
+					{ aggregate: { fields: ['amount'], partition: 'code' } },
 				),
 			)
 			const subjects: Subject[] = [
@@ -1015,7 +989,11 @@ describe('Program', () => {
 				buildProgramDefinition(
 					'empty-batch',
 					'Empty batch',
-					qualificationDefinition('empty-batch-qualification', 'Empty batch qualification', []),
+					createQualificationDefinition(
+						'empty-batch-qualification',
+						'Empty batch qualification',
+						[],
+					),
 					undefined,
 					{ aggregate: { fields: ['amount'], gates } },
 				),
@@ -1030,10 +1008,10 @@ describe('Program', () => {
 	})
 
 	describe('tallies shape', () => {
-		it('always exposes tallies in STATUS_PRECEDENCE order', () => {
+		it('always exposes tallies in STATUSES order', () => {
 			const program = createProgram(batchAggregateProgramDefinition)
 			const result = program.execute(batchSubjects)
-			expect(Object.keys(result.tallies)).toEqual([...STATUS_PRECEDENCE])
+			expect(Object.keys(result.tallies)).toEqual([...STATUSES])
 			program.destroy()
 		})
 	})
@@ -1053,14 +1031,11 @@ describe('Program', () => {
 			const engine = createRecordingEngine()
 			const destroyed = createRecorder<readonly []>()
 			const definition = buildProgramDefinition('', '', standardQualification, standardRating)
-			let error: unknown
-			try {
-				createProgram(definition, { engine, on: { destroy: destroyed.handler } })
-				expect.unreachable('expected DEFINITION')
-			} catch (caught) {
-				error = caught
-			}
-			expect(error).toMatchObject({ code: 'DEFINITION' })
+			expect(
+				captureError(() =>
+					createProgram(definition, { engine, on: { destroy: destroyed.handler } }),
+				),
+			).toMatchObject({ code: 'DEFINITION' })
 			expect(destroyed.count).toBe(1)
 			expect(engine.destroyCount).toBe(0)
 			const qualifier = createQualifier({ engine })

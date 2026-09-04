@@ -32,7 +32,7 @@ import {
 } from '@orkestrel/qualifier'
 import { isRatingDefinition, isRatingResult } from '@orkestrel/rater'
 import { isFieldPath, isLogicalDefinition } from '@orkestrel/reason'
-import { STATUS_PRECEDENCE, STATUSES } from './constants.js'
+import { STATUSES } from './constants.js'
 
 /**
  * Determines whether a value is a {@link Decision} literal.
@@ -110,10 +110,10 @@ export function isNotice(value: unknown): value is Notice {
  * ```
  */
 export function isAggregateDefinition(value: unknown): value is AggregateDefinition {
-	return recordOf({ fields: arrayOf(isFieldPath), by: isFieldPath, gates: isLogicalDefinition }, [
-		'by',
-		'gates',
-	])(value)
+	return recordOf(
+		{ fields: arrayOf(isFieldPath), partition: isFieldPath, gates: isLogicalDefinition },
+		['partition', 'gates'],
+	)(value)
 }
 
 /**
@@ -248,7 +248,7 @@ export const isTally: Guard<Tally> = objectOf({ count: isNumber, sums: isProgram
  * Determines whether a value is a total open status-tally record.
  *
  * @remarks
- * Every {@link Status} in {@link STATUS_PRECEDENCE} is required and checked.
+ * Every {@link Status} in {@link STATUSES} is required and checked.
  * Unknown members and class instances are admitted. Arrays are refused.
  *
  * @param value - The candidate value
@@ -263,7 +263,7 @@ export const isTally: Guard<Tally> = objectOf({ count: isNumber, sums: isProgram
  */
 export function isTallies(value: unknown): value is Readonly<Record<Status, Tally>> {
 	return whereOf(objectOf({}), (record) =>
-		STATUS_PRECEDENCE.every((status) => isTally(Reflect.get(record, status))),
+		STATUSES.every((status) => isTally(Reflect.get(record, status))),
 	)(value)
 }
 
@@ -341,7 +341,7 @@ export const isAggregateResult: Guard<AggregateResult> = objectOf({
  *
  * @remarks
  * `ProgramValidationResult` is this package's own declared interface, not an
- * alias of reason's validation result. This guard therefore checks the three
+ * alias of reason's validation result. This guard therefore checks the
  * program-owned members directly so the contracts may evolve independently.
  * Unknown members and class instances are admitted. Arrays are refused.
  *

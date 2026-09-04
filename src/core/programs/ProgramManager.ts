@@ -18,7 +18,7 @@ import { ProgramError } from '../errors.js'
 import { createProgram } from '../factories.js'
 
 /**
- * Manages compiled {@link ProgramInterface}s in order (AGENTS §9), sharing one
+ * Manages compiled {@link ProgramInterface} programs in order, sharing one
  * qualifier, rater, and reason engine across every program it compiles.
  *
  * @remarks
@@ -47,6 +47,13 @@ export class ProgramManager implements ProgramManagerInterface {
 	readonly #labels: Readonly<Record<string, string>> | undefined
 	#destroyed = false
 
+	/**
+	 * Creates one manager and compiles every seed definition in order.
+	 *
+	 * @param options - Optional injected qualifier, rater, engine, seed programs, validation, labels, and emitter hooks
+	 * @throws {@link ProgramError} Thrown when a seed definition fails to compile,
+	 * after the manager destroys whatever it had already compiled.
+	 */
 	constructor(options?: ProgramManagerOptions) {
 		this.#emitter = new Emitter({
 			...(options?.on === undefined ? {} : { on: options.on }),
@@ -74,30 +81,143 @@ export class ProgramManager implements ProgramManagerInterface {
 		}
 	}
 
+	/**
+	 * Holds the typed observation surface carrying `add`, `remove`, and `destroy`.
+	 *
+	 * @returns The emitter this manager owns
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgramManager } from '@orkestrel/program'
+	 *
+	 * const manager = createProgramManager()
+	 * manager.emitter.on('add', (id) => id)
+	 * manager.destroy()
+	 * ```
+	 */
 	get emitter(): EmitterInterface<ProgramManagerEventMap> {
 		return this.#emitter
 	}
 
-	get size(): number {
+	/**
+	 * Holds how many programs the manager has compiled.
+	 *
+	 * @returns The number of compiled programs
+	 * @throws {@link ProgramError} Thrown when the manager has been destroyed
+	 * (`'DESTROYED'`).
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgramManager } from '@orkestrel/program'
+	 *
+	 * const manager = createProgramManager({ programs: [definition] })
+	 * manager.count // 1
+	 * manager.destroy()
+	 * ```
+	 */
+	get count(): number {
 		this.#alive()
 		return this.#programs.length
 	}
 
+	/**
+	 * Reports whether an id names a compiled program.
+	 *
+	 * @param id - The program id to look for
+	 * @returns True if a compiled program carries the id; false otherwise
+	 * @throws {@link ProgramError} Thrown when the manager has been destroyed
+	 * (`'DESTROYED'`).
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgramManager } from '@orkestrel/program'
+	 *
+	 * const manager = createProgramManager({ programs: [definition] })
+	 * manager.has('standard') // true
+	 * manager.destroy()
+	 * ```
+	 */
 	has(id: string): boolean {
 		this.#alive()
 		return this.#programs.some((program) => program.id === id)
 	}
 
+	/**
+	 * Looks one compiled program up by id.
+	 *
+	 * @param id - The program id to look up
+	 * @returns The compiled program, or `undefined` when no program carries the id
+	 * @throws {@link ProgramError} Thrown when the manager has been destroyed
+	 * (`'DESTROYED'`).
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgramManager } from '@orkestrel/program'
+	 *
+	 * const manager = createProgramManager({ programs: [definition] })
+	 * manager.program('standard')?.execute({ id: 'risk-1', licensed: true })
+	 * manager.destroy()
+	 * ```
+	 */
 	program(id: string): ProgramInterface | undefined {
 		this.#alive()
 		return this.#programs.find((program) => program.id === id)
 	}
 
+	/**
+	 * Returns every compiled program, in insertion order.
+	 *
+	 * @remarks
+	 * The returned array is a fresh copy, so mutating it never reaches the manager's
+	 * own collection.
+	 *
+	 * @returns A fresh array of compiled programs, in insertion order
+	 * @throws {@link ProgramError} Thrown when the manager has been destroyed
+	 * (`'DESTROYED'`).
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgramManager } from '@orkestrel/program'
+	 *
+	 * const manager = createProgramManager({ programs: [definition] })
+	 * manager.programs().map((program) => program.id) // ['standard']
+	 * manager.destroy()
+	 * ```
+	 */
 	programs(): readonly ProgramInterface[] {
 		this.#alive()
 		return [...this.#programs]
 	}
 
+	/**
+	 * Compiles one definition and appends it to the collection.
+	 *
+	 * @remarks
+	 * The compiled program borrows the manager's shared qualifier, rater, and reason
+	 * engine, and inherits the manager's `validate` and `labels` options. After
+	 * appending the program, the `add` event fires with its id.
+	 *
+	 * @param definition - The authored program definition to compile
+	 * @returns The compiled program
+	 * @throws {@link ProgramError} Thrown when the manager has been destroyed
+	 * (`'DESTROYED'`).
+	 * @throws {@link ProgramError} Thrown when the manager already carries the
+	 * definition's id, or the definition repeats a rating-line or notice id
+	 * (`'DUPLICATE'`).
+	 * @throws {@link ProgramError} Thrown when a ruling or notice scope names no
+	 * rating line (`'MISSING'`).
+	 * @throws {@link ProgramError} Thrown when validation is enabled and the
+	 * definition fails (`'DEFINITION'`).
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgramManager } from '@orkestrel/program'
+	 *
+	 * const manager = createProgramManager()
+	 * manager.add(definition).id // 'standard'
+	 * manager.destroy()
+	 * ```
+	 */
 	add(definition: ProgramDefinition): ProgramInterface {
 		this.#alive()
 		if (this.has(definition.id)) {
@@ -119,9 +239,67 @@ export class ProgramManager implements ProgramManagerInterface {
 		return program
 	}
 
-	// Array overload first (AGENTS §9.2) so an id list resolves to the batch form.
+	// Array overload first so an id list resolves to the batch form.
+	/**
+	 * Removes every listed id, destroying each removed program.
+	 *
+	 * @remarks
+	 * Every id is attempted, so one absent id does not stop the rest. Each removal
+	 * destroys its program and fires `remove` with that id. An empty list succeeds
+	 * vacuously.
+	 *
+	 * @param ids - The program ids to remove
+	 * @returns True if every listed id named a compiled program; false otherwise
+	 * @throws {@link ProgramError} Thrown when the manager has been destroyed
+	 * (`'DESTROYED'`).
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgramManager } from '@orkestrel/program'
+	 *
+	 * const manager = createProgramManager({ programs: [definition] })
+	 * manager.remove(['standard', 'absent']) // false
+	 * manager.destroy()
+	 * ```
+	 */
 	remove(ids: readonly string[]): boolean
+	/**
+	 * Removes one id, destroying the program it named.
+	 *
+	 * @param id - The program id to remove
+	 * @returns True if the id named a compiled program; false otherwise
+	 * @throws {@link ProgramError} Thrown when the manager has been destroyed
+	 * (`'DESTROYED'`).
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgramManager } from '@orkestrel/program'
+	 *
+	 * const manager = createProgramManager({ programs: [definition] })
+	 * manager.remove('standard') // true
+	 * manager.destroy()
+	 * ```
+	 */
 	remove(id: string): boolean
+	/**
+	 * Removes every compiled program, destroying each one.
+	 *
+	 * @remarks
+	 * Each removal fires `remove` with that program's id. The manager itself stays
+	 * usable, so a later `add` compiles into the drained collection.
+	 *
+	 * @throws {@link ProgramError} Thrown when the manager has been destroyed
+	 * (`'DESTROYED'`).
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgramManager } from '@orkestrel/program'
+	 *
+	 * const manager = createProgramManager({ programs: [definition] })
+	 * manager.remove()
+	 * manager.destroy()
+	 * ```
+	 */
 	remove(): void
 	remove(input?: string | readonly string[]): boolean | void {
 		this.#alive()
@@ -137,6 +315,25 @@ export class ProgramManager implements ProgramManagerInterface {
 		if (typeof input === 'string') return this.#removeOne(input)
 	}
 
+	/**
+	 * Destroys this manager, idempotently.
+	 *
+	 * @remarks
+	 * The destroyed flag is set BEFORE any teardown or the `remove` and `destroy`
+	 * events, so a `remove` listener re-entering `destroy` is a no-op. Compiled
+	 * programs are destroyed first, then an owned qualifier, rater, and reason engine;
+	 * an injected one stays caller-owned. The emitter is torn down last, and stays
+	 * reachable afterwards.
+	 *
+	 * @example
+	 * ```ts
+	 * import { createProgramManager } from '@orkestrel/program'
+	 *
+	 * const manager = createProgramManager({ programs: [definition] })
+	 * manager.destroy()
+	 * manager.destroy() // a second call is a no-op
+	 * ```
+	 */
 	destroy(): void {
 		if (this.#destroyed) return
 		this.#destroyed = true

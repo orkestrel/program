@@ -1,7 +1,7 @@
 // The shared test infrastructure's own proof. `tests/setup.ts` is the fixture module every
 // Vitest project of this workspace loads first, so its pinned qualifier/rater/engine doubles, its
 // recorders, its malformed-result traps, and its whole program-definition corpus are the ground
-// the `src:core` suites stand on. Each contract below is asserted against a hand-written
+// the `src:core` suites stand on. Each following contract is asserted against a hand-written
 // expectation or against a second mechanism the module does not share — the real
 // `@orkestrel/qualifier`, `@orkestrel/rater`, and `@orkestrel/reason` engines the definitions are
 // authored for, the language's own own-key and prototype reads, a literal subject table — so a
@@ -19,9 +19,10 @@ import type { LogicalDefinition, LogicalResult, ReasonResult, Subject } from '@o
 import type { QualificationDefinition, QualificationResult } from '@orkestrel/qualifier'
 import type { RatingDefinition, RatingResult } from '@orkestrel/rater'
 import type { ProgramDefinition, Status } from '@src/core'
-import { createQualifier, qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
+import { createQualificationDefinition, createQualifier, createRuling } from '@orkestrel/qualifier'
 import { createRater } from '@orkestrel/rater'
 import { createLogicalDefinition, createLogicalReasoner } from '@orkestrel/reason'
+import { captureError } from '@orkestrel/test'
 import { createProgram } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import {
@@ -39,6 +40,8 @@ import {
 	buildHostileSubject,
 	buildLargeBatch,
 	cleanAuthority,
+	buildQualificationResult,
+	buildStandardProgramDefinition,
 	cloneSubject,
 	coastalReferralSubject,
 	conditionalAuthority,
@@ -50,6 +53,9 @@ import {
 	createMalformedLogicalResult,
 	createMalformedQualificationResult,
 	createMalformedRatingResult,
+	createOffContractQualifier,
+	createOffContractReason,
+	createOffContractValidationResult,
 	createQualificationResultClass,
 	createQuantOnlyEngine,
 	createRecordingEngine,
@@ -67,7 +73,6 @@ import {
 	failedQualificationWithAuthorityProgramDefinition,
 	frameSubject,
 	ineligibleSubject,
-	isBrowserVuePath,
 	isSubjectArray,
 	noticeProgramDefinition,
 	recordEvents,
@@ -173,11 +178,11 @@ describe('createFixedQualifier', () => {
 
 	it('delegates validation to a real qualifier, so a dangling ruling is still refused', () => {
 		const qualifier = createFixedQualifier(createMalformedQualificationResult())
-		const dangling = qualificationDefinition(
+		const dangling = createQualificationDefinition(
 			'dangling',
 			'Dangling',
 			[...standardQualification.passes],
-			{ rulings: [rulingDefinition('license', 'gates', 'absent', 'restriction')] },
+			{ rulings: [createRuling('license', 'gates', 'absent', 'restriction')] },
 		)
 
 		expect(qualifier.validate(standardQualification).valid).toBe(true)
@@ -311,6 +316,8 @@ describe('createRecordingEngine', () => {
 		expect(engine.destroyCount).toBe(0)
 		engine.destroy()
 		expect(engine.destroyCount).toBe(1)
+		engine.destroy()
+		expect(engine.destroyCount).toBe(2)
 	})
 
 	it('lets an option replace the default registry', () => {
@@ -457,7 +464,7 @@ describe('buildLargeBatch', () => {
 		expect(buildLargeBatch(64)).toHaveLength(64)
 	})
 
-	it('matches a hand-written table of the first four subjects', () => {
+	it('matches the hand-written fixture table', () => {
 		expect(buildLargeBatch(4)).toEqual([
 			{ id: 'bulk-0', licensed: true, amount: 0, location: 'east' },
 			{ id: 'bulk-1', licensed: false, amount: 1, location: 'west' },
@@ -542,6 +549,105 @@ describe('createResultClass', () => {
 	})
 })
 
+describe('createOffContractValidationResult', () => {
+	it('reports valid while leaving the declared errors collection absent at runtime', () => {
+		const validation = createOffContractValidationResult()
+
+		expect(validation.valid).toBe(true)
+		expect(validation.warnings).toEqual([])
+		expect(validation.errors).toBeUndefined()
+	})
+})
+
+describe('createOffContractQualifier', () => {
+	it('returns an off-contract validation result and refuses to qualify', () => {
+		const qualifier = createOffContractQualifier()
+
+		expect(qualifier.validate(standardQualification).errors).toBeUndefined()
+		expect(captureError(() => qualifier.qualify(eligibleSubject, standardQualification))).toEqual(
+			new Error('Unexpected qualification'),
+		)
+		qualifier.destroy()
+	})
+
+	it('owns the real qualifier it borrows its emitter from, and destroys it', () => {
+		const qualifier = createOffContractQualifier()
+
+		expect(qualifier.emitter.destroyed).toBe(false)
+		qualifier.destroy()
+		expect(qualifier.emitter.destroyed).toBe(true)
+	})
+})
+
+describe('createOffContractReason', () => {
+	it('answers an empty registry and returns an off-contract validation result', () => {
+		const engine = createOffContractReason()
+
+		expect(engine.reasoners()).toEqual([])
+		expect(engine.reasoner('logical')).toBeUndefined()
+		expect(engine.supports('logical')).toBe(false)
+		expect(engine.validate(cleanAuthority).errors).toBeUndefined()
+		engine.destroy()
+	})
+
+	it('refuses to reason and to register, so an unexpected call surfaces as a throw', () => {
+		const engine = createOffContractReason()
+
+		expect(captureError(() => engine.reason(eligibleSubject, cleanAuthority))).toEqual(
+			new Error('Unexpected reasoning'),
+		)
+		expect(captureError(() => engine.register(createLogicalReasoner()))).toEqual(
+			new Error('Unexpected reasoner registration'),
+		)
+		engine.destroy()
+	})
+})
+
+describe('buildQualificationResult', () => {
+	it('fills a clean eligible skeleton the override alone departs from', () => {
+		expect(buildQualificationResult({ eligibility: 'eligible' })).toEqual({
+			id: 'qualification',
+			name: 'Qualification',
+			eligibility: 'eligible',
+			scopes: {},
+			findings: [],
+			derivations: [],
+			success: true,
+			trace: [],
+			errors: [],
+		})
+	})
+
+	it('lets an override replace any skeleton member, including the collections', () => {
+		const result = buildQualificationResult({
+			eligibility: 'referral',
+			scopes: { wind: 'referral' },
+			success: false,
+			errors: ['pass failed'],
+		})
+
+		expect([result.eligibility, result.success]).toEqual(['referral', false])
+		expect(result.scopes).toEqual({ wind: 'referral' })
+		expect(result.errors).toEqual(['pass failed'])
+		expect(result.id).toBe('qualification')
+	})
+})
+
+describe('buildStandardProgramDefinition', () => {
+	it('names the definition after the given id and reuses the standard pair by identity', () => {
+		const definition = buildStandardProgramDefinition('first')
+
+		expect([definition.id, definition.name]).toEqual(['first', 'Program first'])
+		expect(definition.qualification).toBe(standardQualification)
+		expect(definition.rating).toBe(standardRating)
+	})
+
+	it('returns a fresh definition each call, so a later call never shares the first object', () => {
+		expect(buildStandardProgramDefinition('a')).not.toBe(buildStandardProgramDefinition('a'))
+		expect(buildStandardProgramDefinition('a').id).not.toBe(buildStandardProgramDefinition('b').id)
+	})
+})
+
 describe('the qualification fixtures', () => {
 	it('pair each subject with the eligibility its name claims, under a real qualifier', () => {
 		expect(qualifySubject(eligibleSubject, standardQualification).eligibility).toBe('eligible')
@@ -616,7 +722,7 @@ describe('the rating fixtures', () => {
 		expect(rateSubject(standardRating, ineligibleSubject).total).toBe(100)
 	})
 
-	it('give the property rating two lines a scope can tell apart', () => {
+	it('give the property rating distinct scoped lines', () => {
 		const rating = scopedProgramDefinition.rating
 		if (rating === undefined) throw new Error('The property program declares a rating')
 
@@ -718,7 +824,7 @@ describe('buildAggregateGateProgram', () => {
 		const program = buildAggregateGateProgram(100)
 
 		expect(program.aggregate?.fields).toEqual(['amount'])
-		expect(program.aggregate?.by).toBeUndefined()
+		expect(program.aggregate?.partition).toBeUndefined()
 		expect(program.qualification).toBe(standardQualification)
 		expect(program.rating).toBe(standardRating)
 	})
@@ -727,7 +833,7 @@ describe('buildAggregateGateProgram', () => {
 describe('the batch fixtures', () => {
 	it('partition the batch program by location and sum its amount', () => {
 		expect(batchAggregateProgramDefinition.aggregate?.fields).toEqual(['amount'])
-		expect(batchAggregateProgramDefinition.aggregate?.by).toBe('location')
+		expect(batchAggregateProgramDefinition.aggregate?.partition).toBe('location')
 		expect(batchAggregateProgramDefinition.aggregate?.gates).toBeUndefined()
 	})
 
@@ -896,18 +1002,5 @@ describe('the corpus definitions', () => {
 			wind: 'ineligible',
 			exWind: 'ineligible',
 		})
-	})
-})
-
-describe('isBrowserVuePath', () => {
-	it('accepts a browser component path written with either separator family', () => {
-		expect(isBrowserVuePath('app/browser/views/Home.vue')).toBe(true)
-		expect(isBrowserVuePath('app\\browser\\views\\Home.vue')).toBe(true)
-	})
-
-	it('refuses a sibling environment, a prefix lookalike, and a nested repeat', () => {
-		expect(isBrowserVuePath('app/server/views/Home.vue')).toBe(false)
-		expect(isBrowserVuePath('app/browserless/views/Home.vue')).toBe(false)
-		expect(isBrowserVuePath('src/app/browser/views/Home.vue')).toBe(false)
 	})
 })

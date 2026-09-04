@@ -12,8 +12,9 @@ import { ProgramManager } from './programs/ProgramManager.js'
  * Creates one compiled program over a qualifier and rater.
  *
  * @remarks
- * Validates the definition at construction when `options.validate` is left at
- * its {@link DEFAULT_PROGRAM_VALIDATE} default. A standalone program creates and
+ * If `options.validate` is `true`, the program validates the definition at
+ * construction; if `false`, it compiles the definition unvalidated. Default:
+ * {@link DEFAULT_PROGRAM_VALIDATE}. A standalone program creates and
  * OWNS one shared quantitative-plus-logical reason engine and injects it into the
  * qualifier and rater it creates; injected dependencies remain caller-owned.
  *

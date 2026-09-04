@@ -1,21 +1,8 @@
 import type { FieldPath } from '@orkestrel/contract'
-import type {
-	Eligibility,
-	QualificationDefinition,
-	QualificationResult,
-	QualifierInterface,
-} from '@orkestrel/qualifier'
-import type {
-	Definition,
-	ReasonInterface,
-	ReasonerInterface,
-	Reasoning,
-	ReasonResult,
-	ReasonValidationResult,
-	Subject,
-} from '@orkestrel/reason'
+import type { Eligibility } from '@orkestrel/qualifier'
 import { describe, expect, it } from 'vitest'
 import { isRecord } from '@orkestrel/contract'
+import { captureError } from '@orkestrel/test'
 import {
 	AGGREGATE_KEY,
 	OUTCOME_KEY,
@@ -29,8 +16,8 @@ import {
 	buildAggregateResult,
 	buildEmptySums,
 	buildEmptyTallies,
-	buildLimits,
-	buildNotices,
+	buildLimitDeterminations,
+	buildNoticeDeterminations,
 	buildOutcomeProjection,
 	buildProgramResult,
 	buildQualificationSubject,
@@ -42,12 +29,12 @@ import {
 	hasReservedKey,
 	selectProgramLines,
 	sumFields,
-	tallyProgram,
+	tallySubject,
 	validateProgramDefinition,
 } from '@src/core'
 import { createQualifier } from '@orkestrel/qualifier'
 import { createRater } from '@orkestrel/rater'
-import { lineDefinition, ratingDefinition } from '@orkestrel/rater'
+import { buildLineDefinition, buildRatingDefinition } from '@orkestrel/rater'
 import {
 	createAtom,
 	createEvaluator,
@@ -59,9 +46,12 @@ import {
 } from '@orkestrel/reason'
 import {
 	baseLine,
+	buildQualificationResult,
 	cleanAuthority,
 	conditionalProgramDefinition,
 	conditionalSubject,
+	createOffContractQualifier,
+	createOffContractReason,
 	createQuantOnlyEngine,
 	eligibilityOnlyConditionalProgramDefinition,
 	eligibilityOnlyProgramDefinition,
@@ -73,98 +63,7 @@ import {
 	standardRating,
 } from '../../setup.js'
 import { buildNotice, buildProgramDefinition } from '@src/core'
-import { qualificationDefinition, rulingDefinition } from '@orkestrel/qualifier'
-
-class OffContractValidationResult implements ReasonValidationResult {
-	get valid(): boolean {
-		return true
-	}
-
-	get errors(): readonly string[] {
-		return structuredClone(this).errors
-	}
-
-	get warnings(): readonly string[] {
-		return []
-	}
-}
-
-class ScriptedQualifier implements QualifierInterface {
-	readonly #inner = createQualifier()
-
-	get emitter() {
-		return this.#inner.emitter
-	}
-
-	qualify(_subject: Subject, _definition: QualificationDefinition): QualificationResult {
-		throw new Error('Unexpected qualification')
-	}
-
-	validate(_definition: QualificationDefinition): ReasonValidationResult {
-		return new OffContractValidationResult()
-	}
-
-	destroy(): void {
-		this.#inner.destroy()
-	}
-}
-
-class ScriptedReason implements ReasonInterface {
-	readonly #inner = createReason()
-
-	get emitter() {
-		return this.#inner.emitter
-	}
-
-	reason(subjects: readonly Subject[], definition: Definition): readonly ReasonResult[]
-	reason(subject: Subject, definition: Definition): ReasonResult
-	reason(
-		_subjectsOrSubject: readonly Subject[] | Subject,
-		_definition: Definition,
-	): readonly ReasonResult[] | ReasonResult {
-		throw new Error('Unexpected reasoning')
-	}
-
-	register(_reasoner: ReasonerInterface): void {
-		throw new Error('Unexpected reasoner registration')
-	}
-
-	reasoner(_reasoning: Reasoning): ReasonerInterface | undefined {
-		return undefined
-	}
-
-	reasoners(): readonly ReasonerInterface[] {
-		return []
-	}
-
-	supports(_reasoning: Reasoning): boolean {
-		return false
-	}
-
-	validate(_definition: Definition): ReasonValidationResult {
-		return new OffContractValidationResult()
-	}
-
-	destroy(): void {
-		this.#inner.destroy()
-	}
-}
-
-function buildQualification(
-	overrides: Partial<QualificationResult> & Pick<QualificationResult, 'eligibility'>,
-): QualificationResult {
-	return {
-		id: 'qualification',
-		name: 'Qualification',
-		scopes: {},
-		findings: [],
-		derivations: [],
-		success: true,
-		trace: [],
-		errors: [],
-		...overrides,
-	}
-}
+import { createQualificationDefinition, createRuling } from '@orkestrel/qualifier'
 
 describe('helpers', () => {
 	describe('hasReservedKey', () => {
@@ -182,23 +81,14 @@ describe('helpers', () => {
 		})
 
 		it('throws RESERVED with the offending key as context', () => {
-			let aggregateError: unknown
-			try {
-				assertProgramSubject({ id: 'x', aggregate: {} })
-				expect.unreachable('expected RESERVED')
-			} catch (caught) {
-				aggregateError = caught
-			}
-			expect(aggregateError).toMatchObject({ code: 'RESERVED', context: 'aggregate' })
-
-			let outcomeError: unknown
-			try {
-				assertProgramSubject({ id: 'x', outcome: {} })
-				expect.unreachable('expected RESERVED')
-			} catch (caught) {
-				outcomeError = caught
-			}
-			expect(outcomeError).toMatchObject({ code: 'RESERVED', context: 'outcome' })
+			expect(captureError(() => assertProgramSubject({ id: 'x', aggregate: {} }))).toMatchObject({
+				code: 'RESERVED',
+				context: 'aggregate',
+			})
+			expect(captureError(() => assertProgramSubject({ id: 'x', outcome: {} }))).toMatchObject({
+				code: 'RESERVED',
+				context: 'outcome',
+			})
 		})
 	})
 
@@ -231,56 +121,73 @@ describe('helpers', () => {
 	describe('deriveStatus', () => {
 		it('returns ineligible for global ineligibility', () => {
 			expect(
-				deriveStatus(standardProgramDefinition, buildQualification({ eligibility: 'ineligible' })),
+				deriveStatus(
+					standardProgramDefinition,
+					buildQualificationResult({ eligibility: 'ineligible' }),
+				),
 			).toBe('ineligible')
 		})
 
 		it('returns referral for global or scoped referral', () => {
 			expect(
-				deriveStatus(standardProgramDefinition, buildQualification({ eligibility: 'referral' })),
+				deriveStatus(
+					standardProgramDefinition,
+					buildQualificationResult({ eligibility: 'referral' }),
+				),
 			).toBe('referral')
 			expect(
 				deriveStatus(
 					standardProgramDefinition,
-					buildQualification({ eligibility: 'eligible', scopes: { base: 'referral' } }),
+					buildQualificationResult({ eligibility: 'eligible', scopes: { base: 'referral' } }),
 				),
 			).toBe('referral')
 		})
 
 		it('returns unrated when rating is absent or empty', () => {
 			expect(
-				deriveStatus(standardProgramDefinition, buildQualification({ eligibility: 'eligible' })),
+				deriveStatus(
+					standardProgramDefinition,
+					buildQualificationResult({ eligibility: 'eligible' }),
+				),
 			).toBe('unrated')
 			expect(
-				deriveStatus(standardProgramDefinition, buildQualification({ eligibility: 'eligible' }), {
-					lines: [],
-					success: true,
-				}),
+				deriveStatus(
+					standardProgramDefinition,
+					buildQualificationResult({ eligibility: 'eligible' }),
+					{
+						lines: [],
+						success: true,
+					},
+				),
 			).toBe('unrated')
 		})
 
 		it('returns unrated when rating failed', () => {
 			expect(
-				deriveStatus(standardProgramDefinition, buildQualification({ eligibility: 'eligible' }), {
-					lines: [
-						{
-							id: 'base',
-							name: 'Base',
-							worksheet: {
-								id: 'base-rate',
-								name: 'Base rate',
-								aggregation: 'sum',
-								value: 0,
-								groups: [],
-								steps: [],
-								trace: [],
-								errors: ['failed'],
-								success: false,
+				deriveStatus(
+					standardProgramDefinition,
+					buildQualificationResult({ eligibility: 'eligible' }),
+					{
+						lines: [
+							{
+								id: 'base',
+								name: 'Base',
+								worksheet: {
+									id: 'base-rate',
+									name: 'Base rate',
+									aggregation: 'sum',
+									value: 0,
+									groups: [],
+									steps: [],
+									trace: [],
+									errors: ['failed'],
+									success: false,
+								},
 							},
-						},
-					],
-					success: false,
-				}),
+						],
+						success: false,
+					},
+				),
 			).toBe('unrated')
 		})
 
@@ -311,7 +218,7 @@ describe('helpers', () => {
 		})
 
 		it('returns eligible (never unrated) for an eligibility-only definition with no rating', () => {
-			const qualification = buildQualification({ eligibility: 'eligible' })
+			const qualification = buildQualificationResult({ eligibility: 'eligible' })
 			expect(deriveStatus(eligibilityOnlyProgramDefinition, qualification)).toBe('eligible')
 		})
 
@@ -336,9 +243,9 @@ describe('helpers', () => {
 		})
 	})
 
-	describe('buildNotices', () => {
+	describe('buildNoticeDeterminations', () => {
 		it('interpolates messages against the original subject', () => {
-			const notices = buildNotices([buildNotice('rated', 'Program {{id}} executed')], {
+			const notices = buildNoticeDeterminations([buildNotice('rated', 'Program {{id}} executed')], {
 				id: 'risk-1',
 				licensed: true,
 			})
@@ -371,7 +278,7 @@ describe('helpers', () => {
 		})
 
 		it('omits total when rating is absent', () => {
-			const qualification = buildQualification({ eligibility: 'eligible' })
+			const qualification = buildQualificationResult({ eligibility: 'eligible' })
 			const preliminary = buildProgramResult(
 				standardProgramDefinition,
 				qualification,
@@ -387,7 +294,7 @@ describe('helpers', () => {
 
 	describe('buildProgramResult', () => {
 		it('omits rating when absent and omits decision without authority', () => {
-			const qualification = buildQualification({ eligibility: 'ineligible' })
+			const qualification = buildQualificationResult({ eligibility: 'ineligible' })
 			const result = buildProgramResult(
 				standardProgramDefinition,
 				qualification,
@@ -400,7 +307,7 @@ describe('helpers', () => {
 		})
 
 		it('includes decision only when authority is clean and status is not unrated', () => {
-			const qualification = buildQualification({ eligibility: 'eligible' })
+			const qualification = buildQualificationResult({ eligibility: 'eligible' })
 			const authority = createLogicalDefinition('authority', 'Authority', [
 				createRule(
 					'never',
@@ -474,8 +381,8 @@ describe('helpers', () => {
 			const definition = buildProgramDefinition(
 				'missing',
 				'Missing',
-				qualificationDefinition('q', 'Q', [], {
-					rulings: [rulingDefinition('r', 'p', 'r', 'restriction', { scope: 'ghost' })],
+				createQualificationDefinition('q', 'Q', [], {
+					rulings: [createRuling('r', 'p', 'r', 'restriction', { scope: 'ghost' })],
 				}),
 				standardProgramDefinition.rating,
 				{ notices: [buildNotice('n', 'N', { scope: 'missing' })] },
@@ -493,8 +400,8 @@ describe('helpers', () => {
 			const definition = buildProgramDefinition(
 				'assert-missing',
 				'Assert missing',
-				qualificationDefinition('q', 'Q', [], {
-					rulings: [rulingDefinition('r', 'p', 'r', 'restriction', { scope: 'ghost' })],
+				createQualificationDefinition('q', 'Q', [], {
+					rulings: [createRuling('r', 'p', 'r', 'restriction', { scope: 'ghost' })],
 				}),
 				standardRating,
 			)
@@ -507,10 +414,10 @@ describe('helpers', () => {
 			const definition = buildProgramDefinition(
 				'assert-dup-line',
 				'Assert dup line',
-				qualificationDefinition('q', 'Q', []),
-				ratingDefinition('dup-rating', 'Dup rating', [
-					lineDefinition('base', 'Base', baseLine.rate),
-					lineDefinition('base', 'Base again', baseLine.rate),
+				createQualificationDefinition('q', 'Q', []),
+				buildRatingDefinition('dup-rating', 'Dup rating', [
+					buildLineDefinition('base', 'Base', baseLine.rate),
+					buildLineDefinition('base', 'Base again', baseLine.rate),
 				]),
 			)
 			expect(() => assertProgramDefinition(definition)).toThrow('Duplicate rating line id: base')
@@ -520,7 +427,7 @@ describe('helpers', () => {
 			const definition = buildProgramDefinition(
 				'assert-dup-notice',
 				'Assert dup notice',
-				qualificationDefinition('q', 'Q', []),
+				createQualificationDefinition('q', 'Q', []),
 				undefined,
 				{
 					notices: [buildNotice('n', 'First'), buildNotice('n', 'Second')],
@@ -532,9 +439,9 @@ describe('helpers', () => {
 
 	describe('validateProgramDefinition', () => {
 		it('reports off-contract foreign validation results as errors', () => {
-			const qualifier = new ScriptedQualifier()
+			const qualifier = createOffContractQualifier()
 			const source = createQualifier()
-			const engine = new ScriptedReason()
+			const engine = createOffContractReason()
 			try {
 				const qualification = validateProgramDefinition(
 					eligibilityOnlyProgramDefinition,
@@ -606,7 +513,7 @@ describe('helpers', () => {
 				reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
 				bail: false,
 			})
-			const definition = buildProgramDefinition('', '', qualificationDefinition('q', 'Q', []))
+			const definition = buildProgramDefinition('', '', createQualificationDefinition('q', 'Q', []))
 			const validation = validateProgramDefinition(definition, qualifier, engine)
 			expect(validation.errors).toContain('Program id must not be empty')
 			expect(validation.errors).toContain('Program name must not be empty')
@@ -623,10 +530,10 @@ describe('helpers', () => {
 			const definition = buildProgramDefinition(
 				'dup-line-validate',
 				'Dup line validate',
-				qualificationDefinition('q', 'Q', []),
-				ratingDefinition('dup-rating', 'Dup rating', [
-					lineDefinition('base', 'Base', baseLine.rate),
-					lineDefinition('base', 'Base again', baseLine.rate),
+				createQualificationDefinition('q', 'Q', []),
+				buildRatingDefinition('dup-rating', 'Dup rating', [
+					buildLineDefinition('base', 'Base', baseLine.rate),
+					buildLineDefinition('base', 'Base again', baseLine.rate),
 				]),
 			)
 			const validation = validateProgramDefinition(definition, qualifier, engine)
@@ -644,7 +551,7 @@ describe('helpers', () => {
 			const definition = buildProgramDefinition(
 				'dup-notice-validate',
 				'Dup notice validate',
-				qualificationDefinition('q', 'Q', []),
+				createQualificationDefinition('q', 'Q', []),
 				undefined,
 				{ notices: [buildNotice('n', 'First'), buildNotice('n', 'Second')] },
 			)
@@ -663,8 +570,8 @@ describe('helpers', () => {
 			const definition = buildProgramDefinition(
 				'missing-scope-validate',
 				'Missing scope validate',
-				qualificationDefinition('q', 'Q', [], {
-					rulings: [rulingDefinition('r', 'p', 'r', 'restriction', { scope: 'ghost' })],
+				createQualificationDefinition('q', 'Q', [], {
+					rulings: [createRuling('r', 'p', 'r', 'restriction', { scope: 'ghost' })],
 				}),
 				undefined,
 				{ notices: [buildNotice('n', 'N', { scope: 'ghost' })] },
@@ -687,8 +594,8 @@ describe('helpers', () => {
 			const definition = buildProgramDefinition(
 				'no-rating-scope',
 				'No rating scope',
-				qualificationDefinition('q', 'Q', [], {
-					rulings: [rulingDefinition('r', 'p', 'r', 'restriction', { scope: 'base' })],
+				createQualificationDefinition('q', 'Q', [], {
+					rulings: [createRuling('r', 'p', 'r', 'restriction', { scope: 'base' })],
 				}),
 			)
 			const validation = validateProgramDefinition(definition, qualifier, engine)
@@ -706,9 +613,9 @@ describe('helpers', () => {
 			const definition = buildProgramDefinition(
 				'aggregate-fields',
 				'Aggregate fields',
-				qualificationDefinition('q', 'Q', []),
+				createQualificationDefinition('q', 'Q', []),
 				undefined,
-				{ aggregate: buildAggregateDefinition([[], 'amount', 'amount'], { by: [] }) },
+				{ aggregate: buildAggregateDefinition([[], 'amount', 'amount'], { partition: [] }) },
 			)
 			const validation = validateProgramDefinition(definition, qualifier, engine)
 			expect(validation.errors).toContain('Aggregate fields must be non-empty')
@@ -727,7 +634,7 @@ describe('helpers', () => {
 			const definition = buildProgramDefinition(
 				'gates-no-fields',
 				'Gates no fields',
-				qualificationDefinition('q', 'Q', []),
+				createQualificationDefinition('q', 'Q', []),
 				undefined,
 				{ aggregate: buildAggregateDefinition([], { gates: cleanAuthority }) },
 			)
@@ -743,7 +650,11 @@ describe('helpers', () => {
 				reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
 				bail: false,
 			})
-			const definition = buildProgramDefinition('nested-q', '', qualificationDefinition('', '', []))
+			const definition = buildProgramDefinition(
+				'nested-q',
+				'',
+				createQualificationDefinition('', '', []),
+			)
 			const validation = validateProgramDefinition(definition, qualifier, engine)
 			expect(validation.errors.some((error) => error.startsWith('qualification: '))).toBe(true)
 			qualifier.destroy()
@@ -756,7 +667,7 @@ describe('helpers', () => {
 			const definition = buildProgramDefinition(
 				'nested-authority',
 				'Nested authority',
-				qualificationDefinition('q', 'Q', []),
+				createQualificationDefinition('q', 'Q', []),
 				undefined,
 				{ authority: cleanAuthority },
 			)
@@ -774,7 +685,7 @@ describe('helpers', () => {
 			const definition = buildProgramDefinition(
 				'nested-gates',
 				'Nested gates',
-				qualificationDefinition('q', 'Q', []),
+				createQualificationDefinition('q', 'Q', []),
 				undefined,
 				{ aggregate: buildAggregateDefinition(['amount'], { gates: cleanAuthority }) },
 			)
@@ -853,11 +764,11 @@ describe('helpers', () => {
 		it('completes partial tallies and folds one subject', () => {
 			const tallies = completeTallies({ eligible: { count: 1, sums: { amount: 5 } } })
 			expect(tallies.referral.count).toBe(0)
-			const folded = tallyProgram(
+			const folded = tallySubject(
 				buildEmptyTallies(['amount']),
 				buildProgramResult(
 					standardProgramDefinition,
-					buildQualification({ eligibility: 'eligible' }),
+					buildQualificationResult({ eligibility: 'eligible' }),
 					undefined,
 					[],
 					'eligible',
@@ -869,7 +780,7 @@ describe('helpers', () => {
 		})
 
 		it('assembles aggregate results', () => {
-			const qualification = buildQualification({ eligibility: 'eligible' })
+			const qualification = buildQualificationResult({ eligibility: 'eligible' })
 			const subjectResult = buildProgramResult(
 				standardProgramDefinition,
 				qualification,
@@ -890,7 +801,7 @@ describe('helpers', () => {
 		})
 
 		it('folds a failed gate LogicalResult into a failed AggregateResult', () => {
-			const qualification = buildQualification({ eligibility: 'eligible' })
+			const qualification = buildQualificationResult({ eligibility: 'eligible' })
 			const subjectResult = buildProgramResult(
 				standardProgramDefinition,
 				qualification,
@@ -1002,7 +913,7 @@ describe('helpers', () => {
 		})
 	})
 
-	describe('buildLimits', () => {
+	describe('buildLimitDeterminations', () => {
 		it('emits limit determinations only for applied rules', () => {
 			const definition = createLogicalDefinition('limits', 'Limits', [
 				createRule(
@@ -1017,7 +928,7 @@ describe('helpers', () => {
 			const engine = createReason({ reasoners: [createLogicalReasoner()], bail: false })
 			const resolved = engine.reason({ id: 'risk-1', blocked: true }, definition)
 			if (resolved.reasoning !== 'logical') throw new Error('expected logical result')
-			const limits = buildLimits(
+			const limits = buildLimitDeterminations(
 				definition,
 				resolved,
 				{ id: 'risk-1', blocked: true },
@@ -1039,7 +950,12 @@ describe('helpers', () => {
 			const engine = createReason({ reasoners: [createLogicalReasoner()], bail: false })
 			const resolved = engine.reason({ blocked: true }, definition)
 			if (resolved.reasoning !== 'logical') throw new Error('expected logical result')
-			const limits = buildLimits(definition, resolved, { blocked: true }, createEvaluator())
+			const limits = buildLimitDeterminations(
+				definition,
+				resolved,
+				{ blocked: true },
+				createEvaluator(),
+			)
 			expect(limits).toHaveLength(1)
 			expect(Object.hasOwn(limits[0] ?? {}, 'message')).toBe(false)
 			engine.destroy()
@@ -1059,20 +975,27 @@ describe('helpers', () => {
 			const engine = createReason({ reasoners: [createLogicalReasoner()], bail: false })
 			const resolved = engine.reason({ blocked: false }, definition)
 			if (resolved.reasoning !== 'logical') throw new Error('expected logical result')
-			const limits = buildLimits(definition, resolved, { blocked: false }, createEvaluator())
+			const limits = buildLimitDeterminations(
+				definition,
+				resolved,
+				{ blocked: false },
+				createEvaluator(),
+			)
 			expect(limits).toEqual([])
 			engine.destroy()
 		})
 	})
 
-	describe('buildNotices edges', () => {
+	describe('buildNoticeDeterminations edges', () => {
 		it('interpolates a missing token to an empty string', () => {
-			const notices = buildNotices([buildNotice('n', 'Value {{missing}}')], { id: 'x' })
+			const notices = buildNoticeDeterminations([buildNotice('n', 'Value {{missing}}')], {
+				id: 'x',
+			})
 			expect(notices[0]?.message).toBe('Value ')
 		})
 
 		it('interpolates a nested path token', () => {
-			const notices = buildNotices([buildNotice('n', 'City {{location.city}}')], {
+			const notices = buildNoticeDeterminations([buildNotice('n', 'City {{location.city}}')], {
 				id: 'x',
 				location: { city: 'NYC' },
 			})
@@ -1080,7 +1003,7 @@ describe('helpers', () => {
 		})
 
 		it('groups a numeric value with en-US thousands separators', () => {
-			const notices = buildNotices([buildNotice('n', 'Total {{amount}}')], {
+			const notices = buildNoticeDeterminations([buildNotice('n', 'Total {{amount}}')], {
 				id: 'x',
 				amount: 1234567,
 			})
@@ -1090,7 +1013,7 @@ describe('helpers', () => {
 
 	describe('buildOutcomeProjection edges', () => {
 		it('returns scopes that do not alias the source result on mutation', () => {
-			const qualification = buildQualification({
+			const qualification = buildQualificationResult({
 				eligibility: 'eligible',
 				scopes: { base: 'eligible' },
 			})
@@ -1109,7 +1032,7 @@ describe('helpers', () => {
 	})
 
 	describe('integration-shaped helper checks', () => {
-		it('derives unrated for zero-line programs via real qualification', () => {
+		it('derives unrated for zero-line programs through real qualification', () => {
 			const qualifier = createQualifier()
 			const qualification = qualifier.qualify(
 				eligibleSubject,
@@ -1120,7 +1043,10 @@ describe('helpers', () => {
 		})
 
 		it('builds notice determinations for notice definitions', () => {
-			const notices = buildNotices(noticeProgramDefinition.notices ?? [], eligibleSubject)
+			const notices = buildNoticeDeterminations(
+				noticeProgramDefinition.notices ?? [],
+				eligibleSubject,
+			)
 			expect(notices[0]?.applied).toBe(true)
 		})
 
@@ -1159,7 +1085,7 @@ describe('helpers', () => {
 			const aggregate = buildAggregateDefinition(fields)
 			expect(aggregate.fields).toEqual(['amount'])
 			expect(aggregate.fields).not.toBe(fields)
-			expect(Object.hasOwn(aggregate, 'by')).toBe(false)
+			expect(Object.hasOwn(aggregate, 'partition')).toBe(false)
 			expect(Object.hasOwn(aggregate, 'gates')).toBe(false)
 		})
 	})
