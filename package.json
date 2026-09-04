@@ -1,6 +1,6 @@
 {
 	"name": "@orkestrel/program",
-	"version": "0.0.11",
+	"version": "0.0.12",
 	"description": "A program composition layer that orchestrates @orkestrel/qualifier and @orkestrel/rater into one execute workflow with notices, authority, status, decisions, and batch aggregation. Part of the @orkestrel line.",
 	"keywords": [
 		"aggregate",
@@ -77,18 +77,18 @@
 		"test:setup": "vitest run --config vite.config.ts --no-cache --reporter=dot --project setup"
 	},
 	"dependencies": {
-		"@orkestrel/contract": "^0.0.15",
-		"@orkestrel/emitter": "^0.0.8",
-		"@orkestrel/qualifier": "^0.0.12",
-		"@orkestrel/rater": "^0.0.12",
-		"@orkestrel/reason": "^0.0.8"
+		"@orkestrel/contract": "^0.0.16",
+		"@orkestrel/emitter": "^0.0.9",
+		"@orkestrel/qualifier": "^0.0.13",
+		"@orkestrel/rater": "^0.0.13",
+		"@orkestrel/reason": "^0.0.9"
 	},
 	"devDependencies": {
 		"@microsoft/api-extractor": "^7.59.0",
-		"@orkestrel/guide": "^0.0.15",
+		"@orkestrel/guide": "^0.0.17",
 		"@orkestrel/probe": "^0.0.11",
-		"@orkestrel/scaffold": "^0.0.60",
-		"@orkestrel/test": "^0.0.12",
+		"@orkestrel/scaffold": "^0.0.62",
+		"@orkestrel/test": "^0.0.13",
 		"@types/node": "^26.4.0",
 		"oxfmt": "^0.65.0",
 		"oxlint": "^1.80.0",
