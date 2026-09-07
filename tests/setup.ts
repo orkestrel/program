@@ -686,7 +686,7 @@ export const standardProgramDefinition = buildProgramDefinition(
 	standardRating,
 )
 
-/** Build a distinctly-identified program over the standard qualification and rating pair. */
+/** Builds a distinctly-identified program over the standard qualification and rating pair. */
 export function buildStandardProgramDefinition(id: string): ProgramDefinition {
 	return buildProgramDefinition(id, `Program ${id}`, standardQualification, standardRating)
 }
@@ -970,7 +970,7 @@ export function cloneSubject(subject: Subject): Subject {
 }
 
 /**
- * Create a reason engine registering ONLY the quantitative reasoner — used to
+ * Creates a reason engine registering ONLY the quantitative reasoner — used to
  * exercise a `'logical'`-reasoning validation path with no logical reasoner
  * registered (a safe, non-throwing `engine.validate()` miss).
  */
@@ -979,7 +979,7 @@ export function createQuantOnlyEngine(options?: ReasonOptions): ReasonInterface 
 }
 
 /**
- * Build a logical definition with a single premise-less rule.
+ * Builds a logical definition with a single premise-less rule.
  *
  * @remarks
  * A premise-less rule never applies but is a genuine, non-throwing
@@ -1020,28 +1020,28 @@ export const brokenAuthorityProgramDefinition = buildProgramDefinition(
 	{ authority: buildBrokenLogicalDefinition('broken-authority-gates') },
 )
 
-/** An eligibility-only definition (no `rating`) reusing the standard qualification. */
+/** Reuses the standard qualification for an eligibility-only definition with no `rating`. */
 export const eligibilityOnlyProgramDefinition = buildProgramDefinition(
 	'eligibility-only',
 	'Eligibility-only program',
 	standardQualification,
 )
 
-/** An eligibility-only definition reusing the conditional qualification. */
+/** Reuses the conditional qualification for an eligibility-only definition. */
 export const eligibilityOnlyConditionalProgramDefinition = buildProgramDefinition(
 	'eligibility-only-conditional',
 	'Eligibility-only conditional program',
 	conditionalProgramDefinition.qualification,
 )
 
-/** An eligibility-only definition reusing the referral qualification. */
+/** Reuses the referral qualification for an eligibility-only definition. */
 export const eligibilityOnlyReferralProgramDefinition = buildProgramDefinition(
 	'eligibility-only-referral',
 	'Eligibility-only referral program',
 	referralProgramDefinition.qualification,
 )
 
-/** An eligibility-only definition with a clean authority. */
+/** Adds a clean authority to an eligibility-only definition. */
 export const eligibilityOnlyWithAuthorityProgramDefinition = buildProgramDefinition(
 	'eligibility-only-authority',
 	'Eligibility-only authority program',
@@ -1050,7 +1050,7 @@ export const eligibilityOnlyWithAuthorityProgramDefinition = buildProgramDefinit
 	{ authority: cleanAuthority },
 )
 
-/** An eligibility-only definition with a notice scoped to a non-existent rating line. */
+/** Scopes a notice to a non-existent rating line in an eligibility-only definition. */
 export function buildEligibilityOnlyNoticeMissingScopeDefinition(): ProgramDefinition {
 	return buildProgramDefinition(
 		'eligibility-only-notice-missing',
@@ -1063,7 +1063,7 @@ export function buildEligibilityOnlyNoticeMissingScopeDefinition(): ProgramDefin
 
 export const eligibilityOnlyBatchSubjects: Subject[] = [eligibleSubject, ineligibleSubject]
 
-/** A program failing qualification (referral) with a clean authority attached. */
+/** Attaches a clean authority to a program failing qualification (referral). */
 export const failedQualificationWithAuthorityProgramDefinition = buildProgramDefinition(
 	failedQualificationProgramDefinition.id,
 	failedQualificationProgramDefinition.name,
@@ -1106,7 +1106,7 @@ export const allLinesScopedOutProgramDefinition = buildProgramDefinition(
 	]),
 )
 
-/** Build `count` distinct eligible/ineligible-alternating batch subjects. */
+/** Builds `count` distinct eligible/ineligible-alternating batch subjects. */
 export function buildLargeBatch(count: number): Subject[] {
 	return Array.from({ length: count }, (_, index) => ({
 		id: `bulk-${index}`,
@@ -1116,13 +1116,13 @@ export function buildLargeBatch(count: number): Subject[] {
 	}))
 }
 
-/** Batch subjects sharing the same `id`, distinguished by `licensed`. */
+/** Shares one `id` across batch subjects distinguished by `licensed`. */
 export const sharedIdBatchSubjects: Subject[] = [
 	{ id: 'shared', licensed: true, amount: 5, location: 'east' },
 	{ id: 'shared', licensed: false, amount: 7, location: 'west' },
 ]
 
-/** Build a subject carrying its own `__proto__` / `constructor` OWN keys through JSON parsing. */
+/** Builds a subject carrying its own `__proto__` / `constructor` OWN keys through JSON parsing. */
 export function buildHostileSubject(): Subject {
 	return JSON.parse(
 		'{"id":"hostile","licensed":true,"__proto__":{"polluted":true},"constructor":{"polluted":true}}',
