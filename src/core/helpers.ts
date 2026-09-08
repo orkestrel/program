@@ -981,6 +981,9 @@ export function buildProgramDefinition(
 /**
  * Builds a fresh {@link Notice}.
  *
+ * @remarks
+ * An absent `scope` is omitted entirely rather than stored as `undefined`.
+ *
  * @param id - The notice id
  * @param message - The message template, carrying optional `{{token}}` placeholders
  * @param input - Optional presentation scope
@@ -1003,6 +1006,10 @@ export function buildNotice(id: string, message: string, input?: NoticeInput): N
 
 /**
  * Builds a fresh {@link AggregateDefinition}.
+ *
+ * @remarks
+ * `fields` is copied into a fresh array; an absent `partition` or `gates` is
+ * omitted entirely rather than stored as `undefined`.
  *
  * @param fields - The aggregate fields to sum across a batch
  * @param input - Optional partition field and aggregate gates

@@ -1,12 +1,13 @@
 import type { ProgramErrorCode } from './types.js'
 
 /**
- * Reports a coded programmer error thrown by the program layer.
+ * Reports a coded programmer error thrown by the program layer, carrying a
+ * machine-readable code and an optional context and cause.
  *
  * @remarks
  * `DUPLICATE` — a program id collision on `ProgramManager.add`, or a duplicate
- * authored rating-line or notice id. `MISSING` — an
- * authored notice or qualification ruling scope names no rating line.
+ * authored rating-line or notice id. `MISSING` — an authored notice or
+ * qualification ruling scope names no rating line.
  * `DEFINITION` — a program, qualification, rating, authority, or aggregate
  * policy failed validation. `MISMATCH` — an injected entity or a returned
  * reason result has the wrong contract. `RESERVED` — a subject already

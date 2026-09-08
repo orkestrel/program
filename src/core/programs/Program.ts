@@ -48,15 +48,15 @@ import {
 } from '../helpers.js'
 
 /**
- * Composes one qualifier and one rater over a shared reason engine and executes
- * single subjects or aggregate-aware batches.
+ * Composes one qualifier and one rater over a shared reason engine, compiling one
+ * authored definition and executing single subjects or aggregate-aware batches.
  *
  * @remarks
  * Qualification decides whether rating happens: a globally ineligible, referred,
  * or failed subject never reaches the rater, and a scoped ineligibility removes
  * only its line before the first rating call. The rater always receives the
- * ORIGINAL subject; the qualifier's aggregate projection stays private. When no
- * qualifier, rater, or engine is injected the program creates ONE shared
+ * original subject; the qualifier's aggregate projection stays private. When no
+ * qualifier, rater, or engine is injected the program creates one shared
  * quantitative-plus-logical engine, injects it into the qualifier and rater it
  * creates, and destroys only what it owns. A definition failure during
  * construction (an invalid definition under `options.validate`) tears down
@@ -66,8 +66,8 @@ import {
  * or `Date` reached through a reason `Check.value` is cloned but remains mutable
  * because its contents live in internal slots. Uncloneable values and non-empty
  * typed arrays are refused with `ProgramError('DEFINITION')` and the host error
- * as its cause. `destroy()` is idempotent and REENTRANCY-SAFE — the destroyed
- * flag is set BEFORE any teardown or the `destroy` event fires, so a listener
+ * as its cause. `destroy()` is idempotent and reentrancy-safe — the destroyed
+ * flag is set before any teardown or the `destroy` event fires, so a listener
  * that re-enters `destroy()` is a no-op — and tears the emitter down last.
  */
 export class Program implements ProgramInterface {
