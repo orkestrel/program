@@ -2,8 +2,8 @@
 
 > The program composition layer: a pure, JSON-serializable `ProgramDefinition`
 > that composes one qualification with an optional rating, plus notices,
-> authority, and batch aggregate policy, and a `Program` that executes them in
-> one direction — qualify, select, rate, derive status, then authorize.
+> authority, and batch aggregate policy, and a `Program` that executes that
+> definition in one direction — qualify, select, rate, derive status, then decide.
 
 Qualification decides whether rating happens: a globally ineligible, referred, or
 failed subject never reaches the rater, and scoped ineligibility removes only the
@@ -13,6 +13,8 @@ subject resolves to `'eligible'` (or `'conditional'` under an applied condition)
 and status is never `'unrated'`; an authored rating with zero lines still yields
 `'unrated'`, unchanged. The rater always receives the original subject;
 qualification and aggregate working projections stay private to orchestration.
+`Program` executes synchronously. Its result is repeatable only while inputs and
+options stay unchanged and dependency behavior remains unchanged and deterministic.
 
 `Program` performs no reasoning arithmetic. It owns orchestration and business
 outcomes — notices, authority, status, decisions, and batch aggregates — while
@@ -162,11 +164,11 @@ A `Shape` cell holds the constant's declared type.
 
 | API                        | Kind  | Shape                                                                       | Summary                                                                                                  |
 | -------------------------- | ----- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `DEFAULT_PROGRAM_VALIDATE` | const | `true`                                                                      | Names the default definition validation policy, `true`, for `createProgram` / `ProgramManager.add`.      |
+| `DEFAULT_PROGRAM_VALIDATE` | const | `boolean`                                                                   | Names the default definition validation policy, `true`, for `createProgram` / `ProgramManager.add`.      |
 | `STATUSES`                 | const | `readonly ['ineligible', 'referral', 'conditional', 'unrated', 'eligible']` | Lists every `Status` literal in tally order — the source the union and its guard derive from.            |
 | `ELIGIBILITY_DECISIONS`    | const | `Readonly<Record<Eligibility, Decision>>`                                   | Maps each global eligibility to its deterministic authority decision.                                    |
-| `AGGREGATE_KEY`            | const | `'aggregate'`                                                               | Names the reserved working-subject key a batch's aggregate projection is written under, `'aggregate'`.   |
-| `OUTCOME_KEY`              | const | `'outcome'`                                                                 | Names the reserved working-subject key the authority's outcome projection is written under, `'outcome'`. |
+| `AGGREGATE_KEY`            | const | `string`                                                                    | Names the reserved working-subject key a batch's aggregate projection is written under, `'aggregate'`.   |
+| `OUTCOME_KEY`              | const | `string`                                                                    | Names the reserved working-subject key the authority's outcome projection is written under, `'outcome'`. |
 
 `STATUSES` and `ELIGIBILITY_DECISIONS` are `Object.freeze`d; the reserved keys and
 the validation default are primitives. The reserved keys exist only for composed
@@ -219,7 +221,7 @@ Holding `isProgramResult` therefore also holds qualifier's published
 `isProgramValidationResult` checks this package's own interface directly rather
 than delegating to reason's independently evolvable validation contract.
 
-A `Shape` cell holds an interface's data members as bare names in braces, `?` marking an optional member and `plus` introducing its call-signature members, and a type alias's own type literal with a union's arms escaped as `\|`. In a guard table a `Shape` cell holds the type the guard narrows to.
+In a guard table a `Shape` cell holds the type the guard narrows to.
 
 | API                         | Kind     | Shape                              | Summary                                                              |
 | --------------------------- | -------- | ---------------------------------- | -------------------------------------------------------------------- |
@@ -380,6 +382,8 @@ The factories compile entities. The authored definitions they compile are plain
 values, so their builders are helper leaves rather than factories.
 
 #### Compile a program and a manager
+
+Compile a definition into a program and a manager, execute a subject, and tear each down:
 
 ```ts
 import { buildProgramDefinition, createProgram, createProgramManager } from '@orkestrel/program'
@@ -739,12 +743,14 @@ there is no separate collision check to run.
 Warnings stay conservative (validators do not attempt full logical theorem proving)
 and include:
 
-- a program whose rating defines no lines validates with the warning `Program rating has no lines`, and every eligible subject then resolves to `status: 'unrated'` because no line can rate (an OMITTED rating produces no such warning — it is eligibility-only by design, never `unrated`)
+- a program whose rating defines no lines validates with the warning `Program rating has no lines`, and every eligible subject then resolves to `status: 'unrated'` because no line can rate (an omitted rating produces no such warning — it is eligibility-only by design, never `unrated`)
 - aggregate gates defined without aggregate fields
 
 ## Patterns
 
 ### Globally ineligible
+
+Execute a subject that qualification rejects globally:
 
 ```ts
 const result = program.execute({ id: 'risk-1', licensed: false })
@@ -757,6 +763,8 @@ result.status // 'ineligible'
 No quantitative reasoner call occurs.
 
 ### Eligibility-only
+
+Execute an eligible subject without an authored rating:
 
 ```ts
 const definition = buildProgramDefinition('gate-only', 'Gate only', qualification)
@@ -774,6 +782,8 @@ the workflow entirely.
 
 ### Rating-only
 
+Execute an empty qualification before rating every authored line:
+
 ```ts
 const qualification = createQualificationDefinition('all', 'All risks', [])
 const definition = buildProgramDefinition('rate-only', 'Rate only', qualification, rating)
@@ -789,6 +799,8 @@ An empty qualification (no logical passes) qualifies every subject `eligible` wi
 scoped exclusions, so every authored line rates unconditionally.
 
 ### Scoped exclusion
+
+Exclude the scoped rating line through a qualification restriction:
 
 ```ts
 const qualification = createQualificationDefinition(
@@ -825,6 +837,8 @@ The wind definition is not evaluated.
 
 ### Scoped referral
 
+Author a scoped referral that omits the matching rating line:
+
 ```ts
 createRuling('coastal-review', 'wind-gates', 'coastal-review', 'referral', {
 	scope: 'wind',
@@ -836,6 +850,8 @@ The wind line is omitted and program status is `referral`.
 
 ### Conditions
 
+Author a condition that keeps every eligible rating line:
+
 ```ts
 createRuling('protective-device', 'gates', 'protective-device', 'condition', {
 	message: 'Install an approved protective device',
@@ -846,6 +862,8 @@ All eligible lines rate. The result becomes `conditional`.
 
 ### Notices
 
+Attach an unconditional notice to a program definition:
+
 ```ts
 const notice = buildNotice('minimum', 'Minimum earned premium applies')
 
@@ -855,6 +873,8 @@ const definition = buildProgramDefinition('standard', 'Standard', qualification,
 ```
 
 ### Authority
+
+Apply final authority to a conditional program result:
 
 ```ts
 const authority = createLogicalDefinition('authority', 'Final authority', [
@@ -877,6 +897,8 @@ const definition = buildProgramDefinition('standard', 'Standard', qualification,
 A conditional result receives a `limit` determination and no decision.
 
 ### Aggregate qualification
+
+Qualify each subject against its private aggregate projection:
 
 ```ts
 const aggregate = buildAggregateDefinition(['total'], { partition: 'location' })
@@ -908,6 +930,8 @@ the original subject.
 
 ### Aggregate gates
 
+Apply the aggregate-gate logical definition to the completed batch aggregate:
+
 ```ts
 const gates = createLogicalDefinition('batch-gates', 'Batch gates', [
 	createRule(
@@ -924,6 +948,8 @@ These gates create batch determinations. They do not retroactively change indivi
 qualification or rating results.
 
 ### Shared dependencies
+
+Inject caller-owned qualifier, rater, and reason instances into a manager:
 
 ```ts
 const reason = createReason({
@@ -952,6 +978,8 @@ missing a required reasoner always throws on dispatch, bypassing `bail` entirely
 `Program.validate` reports that misconfiguration up front.
 
 ### Observing
+
+Subscribe to every program event through the typed emitter hooks:
 
 ```ts
 const program = createProgram(definition, {

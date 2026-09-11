@@ -215,7 +215,7 @@ export class Program implements ProgramInterface {
 	 * Qualification decides whether rating happens: a globally ineligible, referred,
 	 * or failed subject never reaches the rater, and a scoped ineligibility removes
 	 * only its line before the first rating call. The rater always receives the
-	 * ORIGINAL subject. Notices, status, optional authority, and the optional
+	 * original subject. Notices, status, optional authority, and the optional
 	 * decision follow, in that order.
 	 *
 	 * @param subject - The subject to execute
@@ -277,7 +277,7 @@ export class Program implements ProgramInterface {
 	 * Destroys this program, idempotently.
 	 *
 	 * @remarks
-	 * The destroyed flag is set BEFORE any teardown or the `destroy` event, so a
+	 * The destroyed flag is set before any teardown or the `destroy` event, so a
 	 * listener re-entering `destroy` is a no-op. An owned qualifier, rater, and reason
 	 * engine are destroyed; an injected one stays caller-owned. The emitter is torn
 	 * down last, and stays reachable afterwards.

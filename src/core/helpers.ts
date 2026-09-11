@@ -93,7 +93,7 @@ export function assertProgramSubject(subject: unknown): asserts subject is Subje
  * A scope names a rating-line id. A line survives when its scope is absent
  * (eligible by default), `eligible`, or a `condition` (which is not an
  * eligibility value and never appears here). A scoped `ineligible` or `referral`
- * removes the line BEFORE the rater is invoked — the excluded line is never
+ * removes the line before the rater is invoked — the excluded line is never
  * evaluated merely to discard its amount.
  *
  * @param lines - The program's authored rating lines
@@ -125,9 +125,9 @@ export function selectProgramLines(
  * Explicit policy, not an opaque precedence reduce: global
  * ineligibility or referral is terminal; a scoped referral yields `referral`;
  * an applied `condition` or an applied scoped `restriction` (a line was
- * removed but others rated) is `conditional`. When the definition OMITS
+ * removed but others rated) is `conditional`. When the definition omits
  * `rating` the program is eligibility-only — status resolves to `conditional`
- * or `eligible` and is NEVER `unrated`. Otherwise a subject with no successful
+ * or `eligible` and is never `unrated`. Otherwise a subject with no successful
  * rating is `unrated`.
  *
  * @param definition - The authored program definition
@@ -303,8 +303,8 @@ export function buildOutcomeProjection(result: ProgramResult): Readonly<Record<s
  * qualification succeeded, rating (when it ran) succeeded, and authority (when it
  * ran) produced no errors — a valid ineligible or referral outcome still
  * succeeds. `trace` and `errors` accumulate the qualification's, every rated
- * line's worksheet trail, and the authority's. A `decision` is present ONLY when
- * an authority ran (`options.authority`), the execution SUCCEEDED (`success`),
+ * line's worksheet trail, and the authority's. A `decision` is present only when
+ * an authority ran (`options.authority`), the execution succeeded (`success`),
  * no `limit` determination applied, and status is not `unrated`.
  *
  * @param definition - The authored program definition
@@ -602,7 +602,7 @@ export function validateProgramDefinition(
  * @remarks
  * The key is the resolved field coerced with `String` — `undefined` collapses
  * to the empty string, so a subject missing the field and a subject whose
- * field is literally `''` land in the SAME partition, and a numeric `1`
+ * field is literally `''` land in the same partition, and a numeric `1`
  * collides with the string `'1'`.
  *
  * @param subject - The subject to key
@@ -624,7 +624,7 @@ export function formatGroupKey(subject: Subject, partition: FieldPath): string {
  * Folds one subject's finite aggregate field values into a sums record.
  *
  * @remarks
- * Returns a FRESH record — `sums` is never mutated. Only finite numbers
+ * Returns a fresh record — `sums` is never mutated. Only finite numbers
  * contribute; a non-numeric or absent value contributes zero (never a
  * coercion). A {@link FieldPath} may be nested — `formatField` renders the
  * dot-joined key the returned record is keyed by.
@@ -728,7 +728,7 @@ export function aggregateGroups(
  *
  * @remarks
  * The projection carries the whole-batch `count` and `sums` plus the subject's
- * OWN partition, located by the same {@link formatGroupKey} key
+ * own partition, located by the same {@link formatGroupKey} key
  * {@link aggregateGroups} partitions under.
  *
  * @param subject - The subject to project for
@@ -886,7 +886,7 @@ export function tallySubject(
  * @remarks
  * `count` is the subject count, `trace` / `errors` accumulate every subject's
  * plus the batch aggregate-gate evaluation's (`options.gates`), and `success`
- * requires every subject execution to succeed AND the gate evaluation to have
+ * requires every subject execution to succeed and the gate evaluation to have
  * produced no errors. A fired aggregate gate contributes a `limit`
  * determination, never a technical failure (a non-logical gate result is a
  * caller-facing `MISMATCH` thrown by `Program` before this assembles).

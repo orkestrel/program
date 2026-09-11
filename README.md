@@ -2,8 +2,8 @@
 
 > The program composition layer: a pure, JSON-serializable `ProgramDefinition`
 > that composes one qualification with an optional rating, plus notices,
-> authority, and batch aggregate policy, and a `Program` that executes them in
-> one direction — qualify, select, rate, derive status, then authorize.
+> authority, and batch aggregate policy, and a `Program` that executes that
+> definition in one direction — qualify, select, rate, derive status, then decide.
 
 Build a definition with the `buildProgramDefinition` function, compile it with
 `createProgram`, and call `execute` with one subject for a `ProgramResult` or

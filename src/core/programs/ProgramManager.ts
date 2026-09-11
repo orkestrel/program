@@ -22,14 +22,14 @@ import { createProgram } from '../factories.js'
  * qualifier, rater, and reason engine across every program it compiles.
  *
  * @remarks
- * OWNS its ordered `#programs` collection and its own {@link Emitter} over
+ * owns its ordered `#programs` collection and its own {@link Emitter} over
  * {@link ProgramManagerEventMap}. Creates or borrows one shared engine, qualifier,
  * and rater and injects the same instances into every compiled program. `remove`
  * destroys the programs it removes; `destroy()` removes all programs, then
- * destroys only the owned shared dependencies, and tears the emitter down LAST.
+ * destroys only the owned shared dependencies, and tears the emitter down last.
  * A seed-program failure during construction tears the manager down (destroying
  * whatever had already been compiled) before rethrowing the original error.
- * `destroy()` is REENTRANCY-SAFE — the destroyed flag is set BEFORE any teardown
+ * `destroy()` is reentrancy-safe — the destroyed flag is set before any teardown
  * or the `remove` / `destroy` events fire, so a `remove` listener that re-enters
  * `destroy()` is a no-op. Every call after `destroy()` throws {@link ProgramError}
  * `'DESTROYED'`.
@@ -319,7 +319,7 @@ export class ProgramManager implements ProgramManagerInterface {
 	 * Destroys this manager, idempotently.
 	 *
 	 * @remarks
-	 * The destroyed flag is set BEFORE any teardown or the `remove` and `destroy`
+	 * The destroyed flag is set before any teardown or the `remove` and `destroy`
 	 * events, so a `remove` listener re-entering `destroy` is a no-op. Compiled
 	 * programs are destroyed first, then an owned qualifier, rater, and reason engine;
 	 * an injected one stays caller-owned. The emitter is torn down last, and stays

@@ -122,7 +122,7 @@ export interface Tally {
  * over the lines scoped eligibility left standing, through `@orkestrel/rater`.
  * `authority` (a logical definition) runs last, over the assembled result
  * extended with an outcome projection, to derive limit determinations and the
- * final decision. An omitted `rating` authors an ELIGIBILITY-ONLY program — the
+ * final decision. An omitted `rating` authors an eligibility-only program — the
  * rater is never invoked, an eligible subject resolves to `'eligible'` (or
  * `'conditional'` under an applied condition or scoped restriction), status is
  * never `'unrated'`, and decisions remain reachable through `authority`. Program
@@ -155,7 +155,7 @@ export interface ProgramResult {
 	 * Holds the final authority outcome.
 	 *
 	 * @remarks
-	 * Present ONLY when the program HAS an `authority`, the execution SUCCEEDED
+	 * Present only when the program has an `authority`, the execution succeeded
 	 * (qualification, rating when it ran, and authority all produced no errors),
 	 * no `limit` determination applied, and status is not `unrated`.
 	 */
@@ -287,7 +287,7 @@ export interface ProgramInterface {
 	 * Qualification decides whether rating happens: a globally ineligible, referred,
 	 * or failed subject never reaches the rater, and a scoped ineligibility removes
 	 * only its line before the first rating call. The rater always receives the
-	 * ORIGINAL subject. Notices, status, optional authority, and the optional
+	 * original subject. Notices, status, optional authority, and the optional
 	 * decision follow, in that order.
 	 *
 	 * @param subject - The subject to execute
@@ -339,7 +339,7 @@ export interface ProgramInterface {
 	 * Destroys this program, idempotently.
 	 *
 	 * @remarks
-	 * The destroyed flag is set BEFORE any teardown or the `destroy` event, so a
+	 * The destroyed flag is set before any teardown or the `destroy` event, so a
 	 * listener re-entering `destroy` is a no-op. An owned qualifier, rater, and reason
 	 * engine are destroyed; an injected one stays caller-owned. The emitter is torn
 	 * down last, and stays reachable afterwards.
@@ -554,7 +554,7 @@ export interface ProgramManagerInterface {
 	 * Destroys this manager, idempotently.
 	 *
 	 * @remarks
-	 * The destroyed flag is set BEFORE any teardown or the `remove` and `destroy`
+	 * The destroyed flag is set before any teardown or the `remove` and `destroy`
 	 * events, so a `remove` listener re-entering `destroy` is a no-op. Compiled
 	 * programs are destroyed first, then an owned qualifier, rater, and reason engine;
 	 * an injected one stays caller-owned. The emitter is torn down last, and stays
