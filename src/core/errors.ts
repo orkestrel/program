@@ -1,4 +1,5 @@
 import type { ProgramErrorCode } from './types.js'
+import { isInstance } from '@orkestrel/contract'
 
 /**
  * Reports a coded programmer error thrown by the program layer, carrying a
@@ -56,5 +57,5 @@ export class ProgramError extends Error {
  * ```
  */
 export function isProgramError(value: unknown): value is ProgramError {
-	return value instanceof ProgramError
+	return isInstance(value, ProgramError)
 }

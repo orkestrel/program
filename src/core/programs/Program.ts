@@ -15,7 +15,7 @@ import type {
 	ProgramValidationResult,
 } from '../types.js'
 import { Emitter } from '@orkestrel/emitter'
-import { isArray } from '@orkestrel/contract'
+import { isArray, isObject } from '@orkestrel/contract'
 import { createQualifier, isQualificationResult } from '@orkestrel/qualifier'
 import { createRater, isRatingResult } from '@orkestrel/rater'
 import {
@@ -454,7 +454,7 @@ export class Program implements ProgramInterface {
 			if (value === undefined || Object.isFrozen(value)) continue
 			Object.freeze(value)
 			for (const child of Object.values(value)) {
-				if (child !== null && typeof child === 'object') pending.push(child)
+				if (isObject(child)) pending.push(child)
 			}
 		}
 	}

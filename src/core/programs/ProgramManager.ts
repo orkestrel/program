@@ -10,6 +10,7 @@ import type {
 	ProgramManagerOptions,
 } from '../types.js'
 import { Emitter } from '@orkestrel/emitter'
+import { isArray, isString } from '@orkestrel/contract'
 import { createQualifier } from '@orkestrel/qualifier'
 import { createRater } from '@orkestrel/rater'
 import { createLogicalReasoner, createQuantitativeReasoner, createReason } from '@orkestrel/reason'
@@ -307,12 +308,12 @@ export class ProgramManager implements ProgramManagerInterface {
 			this.#drain()
 			return
 		}
-		if (Array.isArray(input)) {
+		if (isArray(input)) {
 			let removed = true
 			for (const id of input) removed = this.#removeOne(id) && removed
 			return removed
 		}
-		if (typeof input === 'string') return this.#removeOne(input)
+		if (isString(input)) return this.#removeOne(input)
 	}
 
 	/**
