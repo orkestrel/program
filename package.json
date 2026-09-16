@@ -79,15 +79,15 @@
 	"dependencies": {
 		"@orkestrel/contract": "^0.0.17",
 		"@orkestrel/emitter": "^0.0.10",
-		"@orkestrel/qualifier": "^0.0.14",
-		"@orkestrel/rater": "^0.0.14",
-		"@orkestrel/reason": "^0.0.10"
+		"@orkestrel/qualifier": "^0.0.15",
+		"@orkestrel/rater": "^0.0.15",
+		"@orkestrel/reason": "^0.0.11"
 	},
 	"devDependencies": {
 		"@microsoft/api-extractor": "^7.59.1",
-		"@orkestrel/guide": "^0.0.18",
-		"@orkestrel/probe": "^0.0.14",
-		"@orkestrel/scaffold": "^0.0.67",
+		"@orkestrel/guide": "^0.0.20",
+		"@orkestrel/probe": "^0.0.15",
+		"@orkestrel/scaffold": "^0.0.71",
 		"@orkestrel/test": "^0.0.15",
 		"@types/node": "^26.5.1",
 		"oxfmt": "^0.68.0",
