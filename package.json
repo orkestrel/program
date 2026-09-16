@@ -1,6 +1,6 @@
 {
 	"name": "@orkestrel/program",
-	"version": "0.0.13",
+	"version": "0.0.14",
 	"description": "A program composition layer that orchestrates @orkestrel/qualifier and @orkestrel/rater into one execute workflow with notices, authority, status, decisions, and batch aggregation. Part of the @orkestrel line.",
 	"keywords": [
 		"aggregate",
@@ -89,7 +89,7 @@
 		"@orkestrel/probe": "^0.0.15",
 		"@orkestrel/scaffold": "^0.0.71",
 		"@orkestrel/test": "^0.0.15",
-		"@types/node": "^26.5.1",
+		"@types/node": "^26.6.1",
 		"oxfmt": "^0.68.0",
 		"oxlint": "^1.83.0",
 		"typescript": "^6.0.3",
