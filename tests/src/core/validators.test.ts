@@ -1,3 +1,4 @@
+import { attempt } from '@orkestrel/contract'
 import { describe, expect, it } from 'vitest'
 import {
 	buildAggregateDefinition,
@@ -21,6 +22,7 @@ import {
 	isTally,
 } from '@src/core'
 import {
+	buildProgramDepth,
 	baseLine,
 	batchAggregateProgramDefinition,
 	cleanAuthority,
@@ -55,13 +57,7 @@ describe('validators', () => {
 			expect(() => isDecision(cycle)).not.toThrow()
 			expect(isDecision(cycle)).toBe(false)
 
-			const deep: Record<string, unknown> = { level: 0 }
-			let current = deep
-			for (let index = 0; index < 200; index += 1) {
-				const next: Record<string, unknown> = { level: index }
-				current.nested = next
-				current = next
-			}
+			const deep = { level: 0, nested: buildProgramDepth(200, true) }
 			expect(isDecision(deep)).toBe(false)
 
 			const hostile = Object.create({ approved: true })
@@ -178,12 +174,7 @@ describe('validators', () => {
 				name: 'y',
 				qualification: standardQualification,
 				rating: standardRating,
-			}
-			let current = deep
-			for (let index = 0; index < 200; index += 1) {
-				const next: Record<string, unknown> = {}
-				current.nested = next
-				current = next
+				nested: buildProgramDepth(200, false),
 			}
 			expect(isProgramDefinition(deep)).toBe(false)
 		})
@@ -232,10 +223,11 @@ describe('validators', () => {
 
 		it('is total over the hostile-value set with explicit membership', () => {
 			for (const [index, value] of createHostileValues().entries()) {
-				let accepted: boolean | undefined
+				const outcome = attempt(() => isProgramSums(value))
 				expect(() => {
-					accepted = isProgramSums(value)
+					if (!outcome.success) throw outcome.error
 				}, `hostile value ${index}`).not.toThrow()
+				const accepted = outcome.success ? outcome.value : undefined
 				const expected = index === 2 || index === 4 || index === 5
 				expect(accepted, `hostile value ${index}`).toBe(expected)
 			}
@@ -279,10 +271,11 @@ describe('validators', () => {
 
 		it('refuses every hostile value without throwing', () => {
 			for (const [index, value] of createHostileValues().entries()) {
-				let accepted: boolean | undefined
+				const outcome = attempt(() => isDetermination(value))
 				expect(() => {
-					accepted = isDetermination(value)
+					if (!outcome.success) throw outcome.error
 				}, `hostile value ${index}`).not.toThrow()
+				const accepted = outcome.success ? outcome.value : undefined
 				expect(accepted, `hostile value ${index}`).toBe(false)
 			}
 		})
@@ -307,10 +300,11 @@ describe('validators', () => {
 
 		it('refuses every hostile value without throwing', () => {
 			for (const [index, value] of createHostileValues().entries()) {
-				let accepted: boolean | undefined
+				const outcome = attempt(() => isAggregateGroup(value))
 				expect(() => {
-					accepted = isAggregateGroup(value)
+					if (!outcome.success) throw outcome.error
 				}, `hostile value ${index}`).not.toThrow()
+				const accepted = outcome.success ? outcome.value : undefined
 				expect(accepted, `hostile value ${index}`).toBe(false)
 			}
 		})
@@ -335,10 +329,11 @@ describe('validators', () => {
 
 		it('refuses every hostile value without throwing', () => {
 			for (const [index, value] of createHostileValues().entries()) {
-				let accepted: boolean | undefined
+				const outcome = attempt(() => isTally(value))
 				expect(() => {
-					accepted = isTally(value)
+					if (!outcome.success) throw outcome.error
 				}, `hostile value ${index}`).not.toThrow()
+				const accepted = outcome.success ? outcome.value : undefined
 				expect(accepted, `hostile value ${index}`).toBe(false)
 			}
 		})
@@ -364,10 +359,11 @@ describe('validators', () => {
 
 		it('refuses every hostile value without throwing', () => {
 			for (const [index, value] of createHostileValues().entries()) {
-				let accepted: boolean | undefined
+				const outcome = attempt(() => isTallies(value))
 				expect(() => {
-					accepted = isTallies(value)
+					if (!outcome.success) throw outcome.error
 				}, `hostile value ${index}`).not.toThrow()
+				const accepted = outcome.success ? outcome.value : undefined
 				expect(accepted, `hostile value ${index}`).toBe(false)
 			}
 		})
@@ -423,10 +419,11 @@ describe('validators', () => {
 
 		it('refuses every hostile value without throwing', () => {
 			for (const [index, value] of createHostileValues().entries()) {
-				let accepted: boolean | undefined
+				const outcome = attempt(() => isProgramResult(value))
 				expect(() => {
-					accepted = isProgramResult(value)
+					if (!outcome.success) throw outcome.error
 				}, `hostile value ${index}`).not.toThrow()
+				const accepted = outcome.success ? outcome.value : undefined
 				expect(accepted, `hostile value ${index}`).toBe(false)
 			}
 		})
@@ -476,10 +473,11 @@ describe('validators', () => {
 
 		it('refuses every hostile value without throwing', () => {
 			for (const [index, value] of createHostileValues().entries()) {
-				let accepted: boolean | undefined
+				const outcome = attempt(() => isAggregateResult(value))
 				expect(() => {
-					accepted = isAggregateResult(value)
+					if (!outcome.success) throw outcome.error
 				}, `hostile value ${index}`).not.toThrow()
+				const accepted = outcome.success ? outcome.value : undefined
 				expect(accepted, `hostile value ${index}`).toBe(false)
 			}
 		})
@@ -518,10 +516,11 @@ describe('validators', () => {
 
 		it('refuses every hostile value without throwing', () => {
 			for (const [index, value] of createHostileValues().entries()) {
-				let accepted: boolean | undefined
+				const outcome = attempt(() => isProgramValidationResult(value))
 				expect(() => {
-					accepted = isProgramValidationResult(value)
+					if (!outcome.success) throw outcome.error
 				}, `hostile value ${index}`).not.toThrow()
+				const accepted = outcome.success ? outcome.value : undefined
 				expect(accepted, `hostile value ${index}`).toBe(false)
 			}
 		})

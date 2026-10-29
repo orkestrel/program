@@ -13,9 +13,11 @@ import type {
 	ProgramOptions,
 	ProgramResult,
 	ProgramValidationResult,
+	Status,
+	Tally,
 } from '../types.js'
 import { Emitter } from '@orkestrel/emitter'
-import { isArray, isObject } from '@orkestrel/contract'
+import { attempt, isArray, isObject } from '@orkestrel/contract'
 import { createQualifier, isQualificationResult } from '@orkestrel/qualifier'
 import { createRater, isRatingResult } from '@orkestrel/rater'
 import {
@@ -104,17 +106,16 @@ export class Program implements ProgramInterface {
 	 * or notice id (`'DUPLICATE'`).
 	 */
 	constructor(definition: ProgramDefinition, options?: ProgramOptions) {
-		let snapshot: ProgramDefinition
-		try {
-			snapshot = structuredClone(definition)
-		} catch (cause) {
+		const cloned = attempt(() => structuredClone(definition))
+		if (!cloned.success) {
 			throw new ProgramError(
 				'DEFINITION',
 				'Program definition could not be cloned',
 				undefined,
-				cause,
+				cloned.error,
 			)
 		}
+		const snapshot = cloned.value
 		assertProgramDefinition(snapshot)
 		this.id = snapshot.id
 		this.name = snapshot.name
@@ -343,15 +344,15 @@ export class Program implements ProgramInterface {
 		for (const notice of notices) this.#emitter.emit('determine', notice)
 
 		const status = deriveStatus(this.definition, qualification, rating)
-		let result = buildProgramResult(this.definition, qualification, rating, notices, status)
+		const initial = buildProgramResult(this.definition, qualification, rating, notices, status)
 
 		const authority = this.definition.authority
 		if (authority === undefined) {
-			this.#emitter.emit('execute', result)
-			return result
+			this.#emitter.emit('execute', initial)
+			return initial
 		}
 
-		const outcome = { [OUTCOME_KEY]: buildOutcomeProjection(result) }
+		const outcome = { [OUTCOME_KEY]: buildOutcomeProjection(initial) }
 		const resolved = this.#engine.reason(outcome, authority)
 		if (!isLogicalResult(resolved)) {
 			throw new ProgramError('MISMATCH', 'Authority returned invalid logical result', authority.id)
@@ -366,7 +367,7 @@ export class Program implements ProgramInterface {
 		)
 		for (const limit of limits) this.#emitter.emit('determine', limit)
 
-		result = buildProgramResult(
+		const result = buildProgramResult(
 			this.definition,
 			qualification,
 			rating,
@@ -387,16 +388,27 @@ export class Program implements ProgramInterface {
 		const fields = [...(definition?.fields ?? [])]
 		const sums = aggregateSums(subjects, fields)
 		const groups = aggregateGroups(subjects, fields, definition?.partition)
-		let tallies = buildEmptyTallies(fields)
-		const results = subjects.map((subject) => {
+		const initial = buildEmptyTallies(fields)
+		const entries: Array<{
+			readonly index: number
+			readonly result: ProgramResult
+			readonly tallies: Readonly<Record<Status, Tally>>
+		}> = []
+		const length = subjects.length
+		subjects.forEach((subject, index) => {
 			const projection =
 				definition === undefined
 					? undefined
 					: buildAggregateProjection(subject, subjects.length, sums, groups, definition.partition)
 			const result = this.#subject(subject, projection)
-			tallies = tallySubject(tallies, result, subject, fields)
-			return result
+			const tallies = tallySubject(entries.at(-1)?.tallies ?? initial, result, subject, fields)
+			entries.push({ index, result, tallies })
 		})
+		const results = Object.assign(
+			new Array<ProgramResult>(length),
+			Object.fromEntries(entries.map((entry) => [entry.index, entry.result])),
+		)
+		const tallies = entries.at(-1)?.tallies ?? initial
 
 		const gates = this.#aggregateLimits(subjects.length, sums, groups)
 		const result = buildAggregateResult(

@@ -1,4 +1,10 @@
-import type { LineDefinition, RatingResult, RaterInterface, RaterOptions } from '@orkestrel/rater'
+import type {
+	LineDefinition,
+	RatingDefinition,
+	RatingResult,
+	RaterInterface,
+	RaterOptions,
+} from '@orkestrel/rater'
 import type {
 	QualificationDefinition,
 	QualificationResult,
@@ -16,7 +22,13 @@ import type {
 	Reasoning,
 	Subject,
 } from '@orkestrel/reason'
-import type { ProgramDefinition, ProgramEventMap, ProgramInterface } from '@src/core'
+import type {
+	ProgramDefinition,
+	ProgramEventMap,
+	ProgramInterface,
+	ProgramResult,
+	Status,
+} from '@src/core'
 import { isArray } from '@orkestrel/contract'
 import { createQualificationDefinition, createQualifier, createRuling } from '@orkestrel/qualifier'
 import {
@@ -1127,4 +1139,138 @@ export function buildHostileSubject(): Subject {
 	return JSON.parse(
 		'{"id":"hostile","licensed":true,"__proto__":{"polluted":true},"constructor":{"polluted":true}}',
 	)
+}
+
+/** Lists every `Status` the program layer can reach, written out rather than derived from the union. */
+export const CORPUS_STATUSES: readonly Status[] = [
+	'ineligible',
+	'referral',
+	'conditional',
+	'unrated',
+	'eligible',
+]
+
+/** Qualifies one subject through a real, owned qualifier — the second route to a fixture's claim. */
+export function qualifyCase(
+	subject: Subject,
+	definition: QualificationDefinition,
+): QualificationResult {
+	const qualifier = createQualifier()
+	try {
+		return qualifier.qualify(subject, definition)
+	} finally {
+		qualifier.destroy()
+	}
+}
+
+/** Rates one subject through a real, owned rater — the second route to a rating fixture's claim. */
+export function rateCase(definition: RatingDefinition, subject: Subject): RatingResult {
+	const rater = createRater()
+	try {
+		return rater.rate(definition, subject)
+	} finally {
+		rater.destroy()
+	}
+}
+
+/** Runs one logical definition through the real logical reasoner, narrowed without a cast. */
+export function concludeCase(subject: Subject, definition: LogicalDefinition): LogicalResult {
+	const result: ReasonResult = createLogicalReasoner().reason(subject, definition)
+	if (result.reasoning !== 'logical') {
+		throw new Error(`Expected a logical result, got "${result.reasoning}"`)
+	}
+	return result
+}
+
+/** Reads an authority's verdict for one program outcome status. */
+export function checkStatus(definition: LogicalDefinition, status: Status): boolean {
+	return concludeCase({ outcome: { status } }, definition).conclusion
+}
+
+/** Reads an aggregate gate's verdict for one summed portfolio amount. */
+export function checkAmount(definition: LogicalDefinition, amount: number): boolean {
+	return concludeCase({ aggregate: { sums: { amount } } }, definition).conclusion
+}
+
+/** Collects the `{{token}}` names one notice message interpolates. */
+export function collectTokens(message: string): readonly string[] {
+	return [...message.matchAll(/\{\{(\w+)\}\}/g)].map((match) => match[1] ?? '')
+}
+
+/** Lists every program definition the corpus exports as a value, for the corpus-wide invariants. */
+export function collectCorpusDefinitions(): readonly ProgramDefinition[] {
+	return [
+		allLinesScopedOutProgramDefinition,
+		batchAggregateProgramDefinition,
+		brokenAggregateGateProgramDefinition,
+		brokenAuthorityProgramDefinition,
+		conditionalProgramDefinition,
+		eligibilityOnlyConditionalProgramDefinition,
+		eligibilityOnlyProgramDefinition,
+		eligibilityOnlyReferralProgramDefinition,
+		eligibilityOnlyWithAuthorityProgramDefinition,
+		emptyCollectionsProgramDefinition,
+		emptyLinesProgramDefinition,
+		failedQualificationProgramDefinition,
+		failedQualificationWithAuthorityProgramDefinition,
+		noticeProgramDefinition,
+		referralProgramDefinition,
+		scopedProgramDefinition,
+		scopedReferralProgramDefinition,
+		standardProgramDefinition,
+		buildAggregateGateProgram(100),
+		buildAuthorityProgram(cleanAuthority),
+		buildCarrierProgram(),
+		buildEligibilityOnlyNoticeMissingScopeDefinition(),
+	]
+}
+
+/** Builds a nested record with the requested depth and optional level markers. */
+export function buildProgramDepth(depth: number, levels: boolean): Record<string, unknown> {
+	if (depth === 0) return {}
+	return {
+		...(levels ? { level: 200 - depth } : {}),
+		...(depth === 1 ? {} : { nested: buildProgramDepth(depth - 1, levels) }),
+	}
+}
+
+/** Tracks the position of an event assertion within one program execution. */
+export class ProgramEventCursor {
+	#position = 0
+	readonly #names: readonly string[]
+
+	constructor(names: readonly string[]) {
+		this.#names = names
+	}
+
+	get position(): number {
+		return this.#position
+	}
+
+	get value(): string | undefined {
+		return this.#names[this.#position]
+	}
+
+	take(): string | undefined {
+		return this.#names[this.#position++]
+	}
+}
+
+/** Captures one reentrant execution from a program's execute event. */
+export class ProgramReentry {
+	#entered = false
+	#result: ProgramResult | undefined
+
+	constructor(program: ProgramInterface, id: string, subject: Subject) {
+		program.emitter.on('execute', (result) => {
+			if (!this.#entered && result.id === id) {
+				this.#entered = true
+				this.#result = program.execute(subject)
+			}
+		})
+	}
+
+	get result(): ProgramResult | undefined {
+		return this.#result
+	}
 }

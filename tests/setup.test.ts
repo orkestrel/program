@@ -15,17 +15,21 @@
 // constructs a program only to mint a real event payload for the event recorder; it asserts no
 // program outcome.
 
-import type { LogicalDefinition, LogicalResult, ReasonResult, Subject } from '@orkestrel/reason'
-import type { QualificationDefinition, QualificationResult } from '@orkestrel/qualifier'
-import type { RatingDefinition, RatingResult } from '@orkestrel/rater'
-import type { ProgramDefinition, Status } from '@src/core'
+import type { Subject } from '@orkestrel/reason'
 import { createQualificationDefinition, createQualifier, createRuling } from '@orkestrel/qualifier'
-import { createRater } from '@orkestrel/rater'
 import { createLogicalDefinition, createLogicalReasoner } from '@orkestrel/reason'
 import { captureError } from '@orkestrel/test'
 import { createProgram } from '@src/core'
 import { describe, expect, it } from 'vitest'
 import {
+	CORPUS_STATUSES,
+	qualifyCase,
+	rateCase,
+	concludeCase,
+	checkStatus,
+	checkAmount,
+	collectTokens,
+	collectCorpusDefinitions,
 	allLinesScopedOutProgramDefinition,
 	baseLine,
 	batchAggregateProgramDefinition,
@@ -87,84 +91,6 @@ import {
 	unratedAuthority,
 	zeroPassQualification,
 } from './setup.js'
-
-/** Every `Status` the program layer can reach, written out rather than derived from the union. */
-const STATUSES: readonly Status[] = ['ineligible', 'referral', 'conditional', 'unrated', 'eligible']
-
-/** Qualify one subject through a real, owned qualifier — the second route to a fixture's claim. */
-function qualifySubject(
-	subject: Subject,
-	definition: QualificationDefinition,
-): QualificationResult {
-	const qualifier = createQualifier()
-	try {
-		return qualifier.qualify(subject, definition)
-	} finally {
-		qualifier.destroy()
-	}
-}
-
-/** Rate one subject through a real, owned rater — the second route to a rating fixture's claim. */
-function rateSubject(definition: RatingDefinition, subject: Subject): RatingResult {
-	const rater = createRater()
-	try {
-		return rater.rate(definition, subject)
-	} finally {
-		rater.destroy()
-	}
-}
-
-/** Run one logical definition through the real logical reasoner, narrowed without a cast. */
-function concludeLogical(subject: Subject, definition: LogicalDefinition): LogicalResult {
-	const result: ReasonResult = createLogicalReasoner().reason(subject, definition)
-	if (result.reasoning !== 'logical') {
-		throw new Error(`Expected a logical result, got "${result.reasoning}"`)
-	}
-	return result
-}
-
-/** Read an authority's verdict for one program outcome status. */
-function limitsStatus(definition: LogicalDefinition, status: Status): boolean {
-	return concludeLogical({ outcome: { status } }, definition).conclusion
-}
-
-/** Read an aggregate gate's verdict for one summed portfolio amount. */
-function limitsAmount(definition: LogicalDefinition, amount: number): boolean {
-	return concludeLogical({ aggregate: { sums: { amount } } }, definition).conclusion
-}
-
-/** The `{{token}}` names one notice message interpolates. */
-function collectPlaceholders(message: string): readonly string[] {
-	return [...message.matchAll(/\{\{(\w+)\}\}/g)].map((match) => match[1] ?? '')
-}
-
-/** Every program definition the corpus exports as a value, for the corpus-wide invariants. */
-function collectCorpusDefinitions(): readonly ProgramDefinition[] {
-	return [
-		allLinesScopedOutProgramDefinition,
-		batchAggregateProgramDefinition,
-		brokenAggregateGateProgramDefinition,
-		brokenAuthorityProgramDefinition,
-		conditionalProgramDefinition,
-		eligibilityOnlyConditionalProgramDefinition,
-		eligibilityOnlyProgramDefinition,
-		eligibilityOnlyReferralProgramDefinition,
-		eligibilityOnlyWithAuthorityProgramDefinition,
-		emptyCollectionsProgramDefinition,
-		emptyLinesProgramDefinition,
-		failedQualificationProgramDefinition,
-		failedQualificationWithAuthorityProgramDefinition,
-		noticeProgramDefinition,
-		referralProgramDefinition,
-		scopedProgramDefinition,
-		scopedReferralProgramDefinition,
-		standardProgramDefinition,
-		buildAggregateGateProgram(100),
-		buildAuthorityProgram(cleanAuthority),
-		buildCarrierProgram(),
-		buildEligibilityOnlyNoticeMissingScopeDefinition(),
-	]
-}
 
 describe('createFixedQualifier', () => {
 	it('returns the pinned result whatever subject and definition it is handed', () => {
@@ -363,8 +289,8 @@ describe('recordEvents', () => {
 		const outcome = source.execute(eligibleSubject)
 		const aggregate = source.execute(batchSubjects)
 		source.destroy()
-		const qualification = qualifySubject(eligibleSubject, standardQualification)
-		const rating = rateSubject(standardRating, eligibleSubject)
+		const qualification = qualifyCase(eligibleSubject, standardQualification)
+		const rating = rateCase(standardRating, eligibleSubject)
 
 		const program = createProgram(standardProgramDefinition)
 		const recorder = recordEvents(program)
@@ -397,7 +323,7 @@ describe('recordEvents', () => {
 	it('clears its record without detaching, so a later event still records', () => {
 		const program = createProgram(standardProgramDefinition)
 		const recorder = recordEvents(program)
-		program.emitter.emit('qualify', qualifySubject(eligibleSubject, standardQualification))
+		program.emitter.emit('qualify', qualifyCase(eligibleSubject, standardQualification))
 		recorder.clear()
 
 		expect(recorder.names).toEqual([])
@@ -503,7 +429,7 @@ describe('the malformed result fixtures', () => {
 
 describe('createQualificationResultClass', () => {
 	it('reads through to the wrapped result and adds a property no declared field names', () => {
-		const source = qualifySubject(ineligibleSubject, standardQualification)
+		const source = qualifyCase(ineligibleSubject, standardQualification)
 		const wrapped = createQualificationResultClass(source)
 
 		expect(wrapped.eligibility).toBe(source.eligibility)
@@ -514,7 +440,7 @@ describe('createQualificationResultClass', () => {
 	})
 
 	it('exposes nothing as an own key, so a structural copy loses the whole result', () => {
-		const source = qualifySubject(eligibleSubject, standardQualification)
+		const source = qualifyCase(eligibleSubject, standardQualification)
 		const wrapped = createQualificationResultClass(source)
 
 		expect(Object.keys(wrapped)).toEqual([])
@@ -650,16 +576,16 @@ describe('buildStandardProgramDefinition', () => {
 
 describe('the qualification fixtures', () => {
 	it('pair each subject with the eligibility its name claims, under a real qualifier', () => {
-		expect(qualifySubject(eligibleSubject, standardQualification).eligibility).toBe('eligible')
-		expect(qualifySubject(ineligibleSubject, standardQualification).eligibility).toBe('ineligible')
-		expect(
-			qualifySubject(referralSubject, referralProgramDefinition.qualification).eligibility,
-		).toBe('referral')
+		expect(qualifyCase(eligibleSubject, standardQualification).eligibility).toBe('eligible')
+		expect(qualifyCase(ineligibleSubject, standardQualification).eligibility).toBe('ineligible')
+		expect(qualifyCase(referralSubject, referralProgramDefinition.qualification).eligibility).toBe(
+			'referral',
+		)
 	})
 
 	it('separate the standard and referral qualifications by effect alone', () => {
-		const restriction = qualifySubject(ineligibleSubject, standardQualification)
-		const referral = qualifySubject(referralSubject, referralProgramDefinition.qualification)
+		const restriction = qualifyCase(ineligibleSubject, standardQualification)
+		const referral = qualifyCase(referralSubject, referralProgramDefinition.qualification)
 
 		expect(restriction.findings.map((finding) => finding.effect)).toEqual(['restriction'])
 		expect(referral.findings.map((finding) => finding.effect)).toEqual(['referral'])
@@ -669,7 +595,7 @@ describe('the qualification fixtures', () => {
 	})
 
 	it('apply the conditional fixture as a condition that leaves global eligibility standing', () => {
-		const result = qualifySubject(conditionalSubject, conditionalProgramDefinition.qualification)
+		const result = qualifyCase(conditionalSubject, conditionalProgramDefinition.qualification)
 
 		expect(result.eligibility).toBe('eligible')
 		expect(result.findings.map((finding) => [finding.effect, finding.applied])).toEqual([
@@ -678,14 +604,14 @@ describe('the qualification fixtures', () => {
 	})
 
 	it('scope the property restriction to wind alone, leaving the subject globally eligible', () => {
-		const result = qualifySubject(frameSubject, scopedProgramDefinition.qualification)
+		const result = qualifyCase(frameSubject, scopedProgramDefinition.qualification)
 
 		expect(result.eligibility).toBe('eligible')
 		expect(result.scopes).toEqual({ wind: 'ineligible' })
 	})
 
 	it('scope the coastal referral to wind alone', () => {
-		const result = qualifySubject(
+		const result = qualifyCase(
 			coastalReferralSubject,
 			scopedReferralProgramDefinition.qualification,
 		)
@@ -695,8 +621,8 @@ describe('the qualification fixtures', () => {
 	})
 
 	it('leave every subject eligible under the zero-pass qualification, with no findings', () => {
-		const eligible = qualifySubject(eligibleSubject, zeroPassQualification)
-		const ineligible = qualifySubject(ineligibleSubject, zeroPassQualification)
+		const eligible = qualifyCase(eligibleSubject, zeroPassQualification)
+		const ineligible = qualifyCase(ineligibleSubject, zeroPassQualification)
 
 		expect([eligible.eligibility, ineligible.eligibility]).toEqual(['eligible', 'eligible'])
 		expect([eligible.findings, ineligible.findings]).toEqual([[], []])
@@ -704,10 +630,7 @@ describe('the qualification fixtures', () => {
 	})
 
 	it('fail the failing qualification operationally, and fail it closed to referral', () => {
-		const result = qualifySubject(
-			eligibleSubject,
-			failedQualificationProgramDefinition.qualification,
-		)
+		const result = qualifyCase(eligibleSubject, failedQualificationProgramDefinition.qualification)
 
 		expect(result.success).toBe(false)
 		expect(result.eligibility).toBe('referral')
@@ -718,15 +641,15 @@ describe('the qualification fixtures', () => {
 describe('the rating fixtures', () => {
 	it('rate the standard rating to its one base line, at the same amount for any subject', () => {
 		expect(standardRating.lines).toEqual([baseLine])
-		expect(rateSubject(standardRating, eligibleSubject).total).toBe(100)
-		expect(rateSubject(standardRating, ineligibleSubject).total).toBe(100)
+		expect(rateCase(standardRating, eligibleSubject).total).toBe(100)
+		expect(rateCase(standardRating, ineligibleSubject).total).toBe(100)
 	})
 
 	it('give the property rating distinct scoped lines', () => {
 		const rating = scopedProgramDefinition.rating
 		if (rating === undefined) throw new Error('The property program declares a rating')
 
-		expect(rateSubject(rating, frameSubject).lines.map((line) => [line.id, line.amount])).toEqual([
+		expect(rateCase(rating, frameSubject).lines.map((line) => [line.id, line.amount])).toEqual([
 			['wind', 50],
 			['exWind', 75],
 		])
@@ -736,7 +659,7 @@ describe('the rating fixtures', () => {
 		const empty = emptyLinesProgramDefinition.rating
 		if (empty === undefined) throw new Error('The empty-lines program declares a rating')
 
-		expect(rateSubject(empty, eligibleSubject).lines).toEqual([])
+		expect(rateCase(empty, eligibleSubject).lines).toEqual([])
 		expect(emptyCollectionsProgramDefinition.rating).toBe(standardRating)
 		expect(emptyLinesProgramDefinition.qualification.passes).toEqual([])
 		expect(emptyCollectionsProgramDefinition.qualification.passes).toEqual([])
@@ -745,19 +668,19 @@ describe('the rating fixtures', () => {
 
 describe('the authority fixtures', () => {
 	it('limit a conditional outcome through the conditional authority and no other status', () => {
-		expect(limitsStatus(conditionalAuthority, 'conditional')).toBe(true)
-		expect(STATUSES.filter((status) => limitsStatus(conditionalAuthority, status))).toEqual([
-			'conditional',
-		])
+		expect(checkStatus(conditionalAuthority, 'conditional')).toBe(true)
+		const statuses = CORPUS_STATUSES.filter((status) => checkStatus(conditionalAuthority, status))
+		expect(statuses).toEqual(['conditional'])
 	})
 
 	it('limit an unrated outcome through the unrated authority and no other status', () => {
-		expect(STATUSES.filter((status) => limitsStatus(unratedAuthority, status))).toEqual(['unrated'])
+		const statuses = CORPUS_STATUSES.filter((status) => checkStatus(unratedAuthority, status))
+		expect(statuses).toEqual(['unrated'])
 	})
 
 	it('never limit through the clean authority, whatever the outcome status', () => {
-		expect(STATUSES.filter((status) => limitsStatus(cleanAuthority, status))).toEqual([])
-		expect(concludeLogical({ outcome: { status: 'eligible' } }, cleanAuthority).success).toBe(true)
+		expect(CORPUS_STATUSES.filter((status) => checkStatus(cleanAuthority, status))).toEqual([])
+		expect(concludeCase({ outcome: { status: 'eligible' } }, cleanAuthority).success).toBe(true)
 	})
 
 	it('attach a given authority to the standard pair, freshly on each call', () => {
@@ -772,7 +695,7 @@ describe('the authority fixtures', () => {
 
 describe('buildBrokenLogicalDefinition', () => {
 	it('fails a real reasoner without throwing, naming the premise-less rule', () => {
-		const result = concludeLogical(eligibleSubject, buildBrokenLogicalDefinition('gates'))
+		const result = concludeCase(eligibleSubject, buildBrokenLogicalDefinition('gates'))
 
 		expect(result.success).toBe(false)
 		expect(result.conclusion).toBe(false)
@@ -786,10 +709,10 @@ describe('buildBrokenLogicalDefinition', () => {
 			throw new Error('The broken programs declare an authority and aggregate gates')
 		}
 
-		expect(concludeLogical(eligibleSubject, authority).errors).toEqual([
+		expect(concludeCase(eligibleSubject, authority).errors).toEqual([
 			'Rule "broken-authority-gates-rule" has no premises — skipped',
 		])
-		expect(concludeLogical(eligibleSubject, gates).errors).toEqual([
+		expect(concludeCase(eligibleSubject, gates).errors).toEqual([
 			'Rule "broken-aggregate-gates-rule" has no premises — skipped',
 		])
 	})
@@ -807,17 +730,17 @@ describe('buildAggregateGateProgram', () => {
 		const gates = buildAggregateGateProgram(100).aggregate?.gates
 		if (gates === undefined) throw new Error('The aggregate-gate program declares gates')
 
-		expect(limitsAmount(gates, 101)).toBe(true)
-		expect(limitsAmount(gates, 100)).toBe(false)
-		expect(limitsAmount(gates, 99)).toBe(false)
+		expect(checkAmount(gates, 101)).toBe(true)
+		expect(checkAmount(gates, 100)).toBe(false)
+		expect(checkAmount(gates, 99)).toBe(false)
 	})
 
 	it('reads the summed portfolio field, not a top-level subject field', () => {
 		const gates = buildAggregateGateProgram(100).aggregate?.gates
 		if (gates === undefined) throw new Error('The aggregate-gate program declares gates')
 
-		expect(concludeLogical({ amount: 500 }, gates).conclusion).toBe(false)
-		expect(limitsAmount(gates, 500)).toBe(true)
+		expect(concludeCase({ amount: 500 }, gates).conclusion).toBe(false)
+		expect(checkAmount(gates, 500)).toBe(true)
 	})
 
 	it('declares the one field its gate reads, and rates through the standard pair', () => {
@@ -847,7 +770,7 @@ describe('the batch fixtures', () => {
 
 	it('carry a licensed and an unlicensed subject, so a batch tallies more than one status', () => {
 		expect(
-			batchSubjects.map((subject) => qualifySubject(subject, standardQualification).eligibility),
+			batchSubjects.map((subject) => qualifyCase(subject, standardQualification).eligibility),
 		).toEqual(['eligible', 'ineligible', 'eligible'])
 	})
 
@@ -855,7 +778,7 @@ describe('the batch fixtures', () => {
 		expect(new Set(sharedIdBatchSubjects.map((subject) => subject.id))).toEqual(new Set(['shared']))
 		expect(
 			sharedIdBatchSubjects.map(
-				(subject) => qualifySubject(subject, standardQualification).eligibility,
+				(subject) => qualifyCase(subject, standardQualification).eligibility,
 			),
 		).toEqual(['eligible', 'ineligible'])
 	})
@@ -902,7 +825,7 @@ describe('the eligibility-only fixtures', () => {
 describe('the notice fixtures', () => {
 	it('interpolate only field names the eligible subject carries', () => {
 		const messages = (noticeProgramDefinition.notices ?? []).map((notice) => notice.message)
-		const placeholders = messages.flatMap((message) => collectPlaceholders(message))
+		const placeholders = messages.flatMap((message) => collectTokens(message))
 
 		expect(placeholders).not.toEqual([])
 		expect(placeholders.filter((name) => !Object.hasOwn(eligibleSubject, name))).toEqual([])
@@ -936,13 +859,13 @@ describe('buildCarrierProgram', () => {
 		expect(program.qualification).not.toBe(standardQualification)
 		expect(rating).not.toBe(standardRating)
 		expect(program.authority).toBe(cleanAuthority)
-		expect(qualifySubject(ineligibleSubject, program.qualification).eligibility).toBe('ineligible')
-		expect(rateSubject(rating, eligibleSubject).total).toBe(10)
+		expect(qualifyCase(ineligibleSubject, program.qualification).eligibility).toBe('ineligible')
+		expect(rateCase(rating, eligibleSubject).total).toBe(10)
 	})
 
 	it('interpolates only field names the eligible subject carries', () => {
 		const placeholders = (buildCarrierProgram().notices ?? []).flatMap((notice) =>
-			collectPlaceholders(notice.message),
+			collectTokens(notice.message),
 		)
 
 		expect(placeholders).toEqual(['id'])
@@ -998,7 +921,7 @@ describe('the corpus definitions', () => {
 
 		expect(lines).toEqual(['wind', 'exWind'])
 		expect(new Set(scopes)).toEqual(new Set(lines))
-		expect(qualifySubject(frameSubject, definition.qualification).scopes).toEqual({
+		expect(qualifyCase(frameSubject, definition.qualification).scopes).toEqual({
 			wind: 'ineligible',
 			exWind: 'ineligible',
 		})

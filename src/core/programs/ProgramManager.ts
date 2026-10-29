@@ -309,9 +309,7 @@ export class ProgramManager implements ProgramManagerInterface {
 			return
 		}
 		if (isArray(input)) {
-			let removed = true
-			for (const id of input) removed = this.#removeOne(id) && removed
-			return removed
+			return Iterator.from(input).reduce((removed, id) => this.#removeOne(id) && removed, true)
 		}
 		if (isString(input)) return this.#removeOne(input)
 	}

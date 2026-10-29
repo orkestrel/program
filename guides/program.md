@@ -178,6 +178,10 @@ checks membership through `STATUSES`.
 
 ### Errors
 
+The error guard recognizes the shared brand across package copies and accepts
+subclasses without requiring their name. It refuses transparent proxies and
+unbranded look-alikes.
+
 | API              | Kind     | Summary                                                                                                                           |
 | ---------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `ProgramError`   | class    | Reports a coded programmer error thrown by the program layer, carrying a machine-readable code and an optional context and cause. |

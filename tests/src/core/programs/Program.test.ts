@@ -14,6 +14,8 @@ import { STATUSES } from '@src/core'
 import type { Subject } from '@orkestrel/reason'
 import { captureError, createRecorder } from '@orkestrel/test'
 import {
+	ProgramEventCursor,
+	ProgramReentry,
 	allLinesScopedOutProgramDefinition,
 	batchAggregateProgramDefinition,
 	batchSubjects,
@@ -592,17 +594,17 @@ describe('Program', () => {
 			const aggregateIndex = names.lastIndexOf('aggregate')
 			expect(aggregateIndex).toBe(names.length - 1)
 
-			let cursor = 0
-			for (let index = 0; index < batchSubjects.length; index += 1) {
-				expect(names[cursor++]).toBe('qualify')
-				if (names[cursor] === 'rate') cursor += 1
-				while (cursor < names.length && names[cursor] === 'determine') cursor += 1
-				expect(names[cursor++]).toBe('execute')
+			const cursor = new ProgramEventCursor(names)
+			batchSubjects.forEach(() => {
+				expect(cursor.take()).toBe('qualify')
+				if (cursor.value === 'rate') cursor.take()
+				while (cursor.position < names.length && cursor.value === 'determine') cursor.take()
+				expect(cursor.take()).toBe('execute')
+			})
+			while (cursor.position < aggregateIndex) {
+				expect(cursor.take()).toBe('determine')
 			}
-			while (cursor < aggregateIndex) {
-				expect(names[cursor++]).toBe('determine')
-			}
-			expect(names[cursor]).toBe('aggregate')
+			expect(cursor.value).toBe('aggregate')
 			program.destroy()
 		})
 	})
@@ -810,17 +812,10 @@ describe('Program', () => {
 
 		it('supports one re-entrant execute call from within an execute listener', () => {
 			const program = createProgram(standardProgramDefinition)
-			let reentered = false
-			let nestedResult: ReturnType<typeof program.execute> | undefined
-			program.emitter.on('execute', (result) => {
-				if (!reentered && result.id === standardProgramDefinition.id) {
-					reentered = true
-					nestedResult = program.execute(ineligibleSubject)
-				}
-			})
+			const reentry = new ProgramReentry(program, standardProgramDefinition.id, ineligibleSubject)
 			const outer = program.execute(eligibleSubject)
 			expect(outer.status).toBe('eligible')
-			expect(nestedResult?.status).toBe('ineligible')
+			expect(reentry.result?.status).toBe('ineligible')
 			program.destroy()
 		})
 	})

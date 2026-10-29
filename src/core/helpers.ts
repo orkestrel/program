@@ -679,9 +679,11 @@ export function aggregateSums(
 	subjects: readonly Subject[],
 	fields: readonly FieldPath[],
 ): Readonly<Record<string, number>> {
-	let sums = buildEmptySums(fields)
-	for (const subject of subjects) sums = sumFields(sums, subject, fields)
-	return sums
+	const initial = buildEmptySums(fields)
+	return Iterator.from(subjects).reduce<Readonly<Record<string, number>>>(
+		(sums, subject) => sumFields(sums, subject, fields),
+		initial,
+	)
 }
 
 /**

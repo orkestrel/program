@@ -1,5 +1,5 @@
 import type { ProgramErrorCode } from './types.js'
-import { isInstance } from '@orkestrel/contract'
+import { holds, INTRINSICS, isInstance, literalOf } from '@orkestrel/contract'
 
 /**
  * Reports a coded programmer error thrown by the program layer, carrying a
@@ -36,6 +36,7 @@ export class ProgramError extends Error {
 	 */
 	constructor(code: ProgramErrorCode, message: string, context?: unknown, cause?: unknown) {
 		super(message, cause === undefined ? undefined : { cause })
+		Object.defineProperty(this, Symbol.for('@orkestrel/program.ProgramError'), { value: this })
 		this.name = 'ProgramError'
 		this.code = code
 		this.context = context
@@ -57,5 +58,20 @@ export class ProgramError extends Error {
  * ```
  */
 export function isProgramError(value: unknown): value is ProgramError {
-	return isInstance(value, ProgramError)
+	const brand = Symbol.for('@orkestrel/program.ProgramError')
+	return holds(() => {
+		return (
+			isInstance(value, Error) &&
+			INTRINSICS.prototype(value) !== Error.prototype &&
+			INTRINSICS.describe(value, brand)?.value === value &&
+			literalOf(
+				'DUPLICATE',
+				'MISSING',
+				'DEFINITION',
+				'MISMATCH',
+				'RESERVED',
+				'DESTROYED',
+			)(INTRINSICS.reflect.read(value, 'code'))
+		)
+	})
 }
