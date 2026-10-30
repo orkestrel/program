@@ -125,7 +125,7 @@ manager.destroy()
 
 A `Shape` cell holds an interface's data members as bare names in braces, `?` marking an optional member and `plus` introducing its call-signature members, and a type alias's own type literal with a union's arms escaped as `\|`.
 
-| Type                      | Kind      | Shape                                                                                                          | Summary                                                                                                |
+| Name                      | Kind      | Shape                                                                                                          | Summary                                                                                                |
 | ------------------------- | --------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `Decision`                | type      | `'approved' \| 'denied' \| 'submitted'`                                                                        | Identifies a final authority outcome, derived from global eligibility.                                 |
 | `Status`                  | type      | `'ineligible' \| 'referral' \| 'conditional' \| 'unrated' \| 'eligible'`                                       | Identifies the presentation and tally status derived from eligibility, conditions, and rating success. |
@@ -162,7 +162,7 @@ rater supplies `RatingDefinition` and `RatingResult`; reason supplies
 
 A `Shape` cell holds the constant's declared type.
 
-| API                        | Kind  | Shape                                                                       | Summary                                                                                                  |
+| Name                       | Kind  | Shape                                                                       | Summary                                                                                                  |
 | -------------------------- | ----- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `DEFAULT_PROGRAM_VALIDATE` | const | `boolean`                                                                   | Names the default definition validation policy, `true`, for `createProgram` / `ProgramManager.add`.      |
 | `STATUSES`                 | const | `readonly ['ineligible', 'referral', 'conditional', 'unrated', 'eligible']` | Lists every `Status` literal in tally order — the source the union and its guard derive from.            |
@@ -182,7 +182,7 @@ The error guard recognizes the shared brand across package copies and accepts
 subclasses without requiring their name. It refuses transparent proxies and
 unbranded look-alikes.
 
-| API              | Kind     | Summary                                                                                                                           |
+| Name             | Kind     | Summary                                                                                                                           |
 | ---------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `ProgramError`   | class    | Reports a coded programmer error thrown by the program layer, carrying a machine-readable code and an optional context and cause. |
 | `isProgramError` | function | Determines whether a caught value is a `ProgramError`.                                                                            |
@@ -227,7 +227,7 @@ than delegating to reason's independently evolvable validation contract.
 
 In a guard table a `Shape` cell holds the type the guard narrows to.
 
-| API                         | Kind     | Shape                              | Summary                                                              |
+| Name                        | Kind     | Shape                              | Summary                                                              |
 | --------------------------- | -------- | ---------------------------------- | -------------------------------------------------------------------- |
 | `isDecision`                | const    | `Decision`                         | Determines whether a value is a `Decision` literal.                  |
 | `isStatus`                  | const    | `Status`                           | Determines whether a value is a `Status` literal.                    |
@@ -286,7 +286,7 @@ generic over any `Rule`/`Subject`/`EvaluatorInterface`) rather than re-implement
 them. `Program` owns one stateless `#evaluator` (created with `createEvaluator()`,
 never destroyed — it holds no state to tear down) purely to drive that reuse.
 
-| API                         | Kind     | Summary                                                                                                                              |
+| Name                        | Kind     | Summary                                                                                                                              |
 | --------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | `selectProgramLines`        | function | Selects the rating lines a subject may be rated on from scoped eligibility.                                                          |
 | `deriveStatus`              | function | Derives the final program `Status` from a definition's rating policy and qualification/rating evidence.                              |
@@ -377,7 +377,7 @@ const definition = buildProgramDefinition('standard', 'Standard', qualification,
 
 ### Factories
 
-| API                    | Kind     | Summary                                                               |
+| Name                   | Kind     | Summary                                                               |
 | ---------------------- | -------- | --------------------------------------------------------------------- |
 | `createProgram`        | function | Creates one compiled `ProgramInterface` over a qualifier and rater.   |
 | `createProgramManager` | function | Creates one ordered `ProgramManagerInterface` over compiled programs. |
@@ -405,7 +405,7 @@ manager.destroy()
 
 ### Classes
 
-| API              | Kind  | Summary                                                                                                                                                       |
+| Name             | Kind  | Summary                                                                                                                                                       |
 | ---------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Program`        | class | Composes one qualifier and one rater over a shared reason engine, compiling one authored definition and executing single subjects or aggregate-aware batches. |
 | `ProgramManager` | class | Manages compiled `ProgramInterface` programs in order, sharing one qualifier, rater, and reason engine across every program it compiles.                      |
