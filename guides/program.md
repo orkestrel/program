@@ -197,15 +197,6 @@ try {
 }
 ```
 
-| Code         | Meaning                                                                                                        |
-| ------------ | -------------------------------------------------------------------------------------------------------------- |
-| `DUPLICATE`  | A manager already contains the program id, or an authored definition has a duplicate rating-line or notice id. |
-| `MISSING`    | A notice, ruling scope, or other authored reference names no rating line.                                      |
-| `DEFINITION` | Program, qualification, rating, authority, or aggregate policy is invalid.                                     |
-| `MISMATCH`   | An injected entity or returned result has the wrong contract.                                                  |
-| `RESERVED`   | A subject already carries `aggregate` or `outcome`.                                                            |
-| `DESTROYED`  | An operation was attempted after teardown.                                                                     |
-
 Eligibility and rating failures remain nested result evidence rather than throws.
 
 ### Validators
@@ -469,6 +460,17 @@ The manager does not expose `execute`. Consumers deliberately choose a program, 
 keeps execution and collection responsibilities separate.
 
 ## Contract
+
+### Error codes
+
+| Code         | Meaning                                                                                                        |
+| ------------ | -------------------------------------------------------------------------------------------------------------- |
+| `DUPLICATE`  | A manager already contains the program id, or an authored definition has a duplicate rating-line or notice id. |
+| `MISSING`    | A notice, ruling scope, or other authored reference names no rating line.                                      |
+| `DEFINITION` | Program, qualification, rating, authority, or aggregate policy is invalid.                                     |
+| `MISMATCH`   | An injected entity or returned result has the wrong contract.                                                  |
+| `RESERVED`   | A subject already carries `aggregate` or `outcome`.                                                            |
+| `DESTROYED`  | An operation was attempted after teardown.                                                                     |
 
 ### Execution order
 
