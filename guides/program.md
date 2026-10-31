@@ -123,8 +123,6 @@ manager.destroy()
 
 ### Types
 
-A `Shape` cell holds an interface's data members as bare names in braces, `?` marking an optional member and `plus` introducing its call-signature members, and a type alias's own type literal with a union's arms escaped as `\|`.
-
 | Name                      | Kind      | Signature                                                                                                                                                                                                                                                                                                                                                                               | Summary                                                                                                |
 | ------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
 | `Decision`                | type      | `'approved' \| 'denied' \| 'submitted'`                                                                                                                                                                                                                                                                                                                                                 | Identifies a final authority outcome, derived from global eligibility.                                 |
@@ -159,8 +157,6 @@ rater supplies `RatingDefinition` and `RatingResult`; reason supplies
 `JSONValue`; the emitter supplies the observation types.
 
 ### Constants
-
-A `Shape` cell holds the constant's declared type.
 
 | Name                       | Kind  | Signature                                                                   | Summary                                                                                                  |
 | -------------------------- | ----- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
@@ -215,8 +211,6 @@ Holding `isProgramResult` therefore also holds qualifier's published
 `isQualificationResult` closure and rater's published `isRatingResult` closure.
 A `validate` result belongs to `@orkestrel/reason`, so narrow one with the
 `isReasonValidationResult` guard from that package.
-
-In a guard table a `Shape` cell holds the type the guard narrows to.
 
 | Name                    | Kind     | Signature                                                       | Summary                                                              |
 | ----------------------- | -------- | --------------------------------------------------------------- | -------------------------------------------------------------------- |
