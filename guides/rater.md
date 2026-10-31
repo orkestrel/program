@@ -68,7 +68,7 @@ A `Shape` cell holds an interface's data members as bare names in braces, `?` ma
 optional member and `plus` introducing its call-signature members, and a type alias's own
 type literal with a union's arms escaped as `\|`.
 
-| Type               | Kind      | Shape                                                                                 | Summary                                                                              |
+| Name               | Kind      | Signature                                                                             | Summary                                                                              |
 | ------------------ | --------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | `Stage`            | type      | `'factor' \| 'group' \| 'total'`                                                      | Names a worksheet derivation step stage.                                             |
 | `RaterErrorCode`   | type      | `'DEFINITION' \| 'MISMATCH' \| 'DESTROYED'`                                           | Names a coded `RaterError` programmer-error code.                                    |
@@ -82,9 +82,9 @@ type literal with a union's arms escaped as `\|`.
 | `Worksheet`        | interface | `{ id, name, aggregation, precision?, value, groups, steps, trace, errors, success }` | Represents a quantitative definition joined to its result — the rating audit trail.  |
 | `LineResult`       | interface | `{ id, name, amount?, worksheet }`                                                    | Represents one line's rating outcome.                                                |
 | `RatingResult`     | interface | `{ lines, total?, success }`                                                          | Represents a rated outcome across every line of one `rate` call.                     |
-| `RaterEventMap`    | type      | `{ rate }`                                                                            | Represents the push observation surface of a `RaterInterface`.                       |
+| `RaterEventMap`    | type      | `{ readonly rate: readonly [subject: Subject, result: RatingResult]; }`               | Represents the push observation surface of a `RaterInterface`.                       |
 | `RaterOptions`     | interface | `{ on?, error?, engine?, total?, labels? }`                                           | Configures `createRater` and the `Rater` constructor.                                |
-| `RaterInterface`   | interface | `{ emitter } plus rate, destroy`                                                      | Represents the rating orchestrator over the shared quantitative reasoning engine.    |
+| `RaterInterface`   | interface | `{ emitter, rate(), destroy() }`                                                      | Represents the rating orchestrator over the shared quantitative reasoning engine.    |
 
 `RaterInterface`'s `emitter` is a `readonly` data member and stays in this table's
 `Shape` cell; the interface's call-signature members are documented under
@@ -95,13 +95,17 @@ type literal with a union's arms escaped as `\|`.
 Every `RaterError` carries a `code` — `'DEFINITION'`, `'MISMATCH'`, or `'DESTROYED'` —
 and an optional `context` record of structured detail beside its message.
 
-| API            | Kind     | Summary                                                         |
-| -------------- | -------- | --------------------------------------------------------------- |
-| `RaterError`   | class    | Represents a coded programmer error thrown by the rating layer. |
-| `isRaterError` | function | Narrows a caught value to a `RaterError`.                       |
+| Name           | Kind     | Signature                                                                                                | Summary                                                         |
+| -------------- | -------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `RaterError`   | class    | `new (code: RaterErrorCode, message: string, context?: Readonly<Record<string, unknown>>) => RaterError` | Represents a coded programmer error thrown by the rating layer. |
+| `isRaterError` | function | `(value: unknown) => value is RaterError`                                                                | Narrows a caught value to a `RaterError`.                       |
 
 The `isRaterError` guard narrows a caught value, so a handler reads the `code` member
 off it:
+
+The guard recognizes the error's own identity brand across package copies and module
+formats. It accepts subclasses regardless of their `name` and refuses transparent
+proxies, unbranded look-alikes, and plain branded objects.
 
 ```ts
 import { isRaterError, RaterError } from '@orkestrel/rater'
@@ -127,18 +131,18 @@ plain numbers, strings, or unknown values.
 
 In a guard table a `Shape` cell holds the type the guard narrows to.
 
-| API                  | Kind     | Shape              | Summary                                                                |
-| -------------------- | -------- | ------------------ | ---------------------------------------------------------------------- |
-| `isStage`            | const    | `Stage`            | Determines whether a value is a `Stage` literal.                       |
-| `isLineDefinition`   | function | `LineDefinition`   | Determines whether a value is an exact `LineDefinition` record.        |
-| `isRatingDefinition` | function | `RatingDefinition` | Determines whether a value is an exact `RatingDefinition` record.      |
-| `isEvidence`         | function | `Evidence`         | Determines whether a value is an open result-side `Evidence` object.   |
-| `isWorksheetFactor`  | function | `WorksheetFactor`  | Determines whether a value is an open `WorksheetFactor` result object. |
-| `isWorksheetGroup`   | function | `WorksheetGroup`   | Determines whether a value is an open `WorksheetGroup` result object.  |
-| `isStep`             | function | `Step`             | Determines whether a value is an open `Step` result object.            |
-| `isWorksheet`        | function | `Worksheet`        | Determines whether a value is an open `Worksheet` result object.       |
-| `isLineResult`       | function | `LineResult`       | Determines whether a value is an open `LineResult` object.             |
-| `isRatingResult`     | function | `RatingResult`     | Determines whether a value is an open `RatingResult` object.           |
+| Name                 | Kind     | Signature                                       | Summary                                                                |
+| -------------------- | -------- | ----------------------------------------------- | ---------------------------------------------------------------------- |
+| `isStage`            | const    | `Guard<Stage>`                                  | Determines whether a value is a `Stage` literal.                       |
+| `isLineDefinition`   | function | `(value: unknown) => value is LineDefinition`   | Determines whether a value is an exact `LineDefinition` record.        |
+| `isRatingDefinition` | function | `(value: unknown) => value is RatingDefinition` | Determines whether a value is an exact `RatingDefinition` record.      |
+| `isEvidence`         | function | `(value: unknown) => value is Evidence`         | Determines whether a value is an open result-side `Evidence` object.   |
+| `isWorksheetFactor`  | function | `(value: unknown) => value is WorksheetFactor`  | Determines whether a value is an open `WorksheetFactor` result object. |
+| `isWorksheetGroup`   | function | `(value: unknown) => value is WorksheetGroup`   | Determines whether a value is an open `WorksheetGroup` result object.  |
+| `isStep`             | function | `(value: unknown) => value is Step`             | Determines whether a value is an open `Step` result object.            |
+| `isWorksheet`        | function | `(value: unknown) => value is Worksheet`        | Determines whether a value is an open `Worksheet` result object.       |
+| `isLineResult`       | function | `(value: unknown) => value is LineResult`       | Determines whether a value is an open `LineResult` object.             |
+| `isRatingResult`     | function | `(value: unknown) => value is RatingResult`     | Determines whether a value is an open `RatingResult` object.           |
 
 Each guard answers `true` for a value of its own shape:
 
@@ -160,19 +164,19 @@ isRatingDefinition({ id: 'r1', name: 'Rating', lines: [] }) // true
 Pure, exported utility functions — the definition builders, the evidence construction,
 and the worksheet-joining behind `Rater`'s `rate` projection.
 
-| API                     | Kind     | Summary                                                                                                                                                     |
-| ----------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `buildLineDefinition`   | function | Builds a fresh `LineDefinition` from a line id, a display name, and the line's quantitative rating definition, with `overrides` merged over those defaults. |
-| `buildRatingDefinition` | function | Builds a fresh `RatingDefinition` from a rating id, a display name, and the rating's ordered lines, with `overrides` merged over those defaults.            |
-| `buildEvidence`         | function | Builds an `Evidence` row from an evaluated `Check`.                                                                                                         |
-| `buildEvidenceRows`     | function | Builds one evidence row per authored check of a quantitative factor, joined to that check's evaluated result.                                               |
-| `buildWorksheetFactor`  | function | Joins one authored quantitative factor to its evaluated `FactorResult`.                                                                                     |
-| `buildWorksheetGroup`   | function | Joins one authored quantitative group to its evaluated `GroupResult`.                                                                                       |
-| `buildWorksheetStep`    | function | Builds one display-neutral `Step` row.                                                                                                                      |
-| `buildWorksheetSteps`   | function | Builds the ordered `Step` rows for a resolved `Worksheet`.                                                                                                  |
-| `buildWorksheet`        | function | Joins a `QuantitativeDefinition` and its `QuantitativeResult` into a `Worksheet` — the rating audit trail.                                                  |
-| `buildLineResult`       | function | Builds a rated `LineResult` from a line's evaluated `QuantitativeResult`.                                                                                   |
-| `sumAmounts`            | function | Sums defined line amounts.                                                                                                                                  |
+| Name                    | Kind     | Signature                                                                                                                                                  | Summary                                                                                                                                                     |
+| ----------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `buildLineDefinition`   | function | `(id: string, name: string, rate: QuantitativeDefinition, overrides?: Partial<Omit<LineDefinition, 'id' \| 'name' \| 'rate'>>) => LineDefinition`          | Builds a fresh `LineDefinition` from a line id, a display name, and the line's quantitative rating definition, with `overrides` merged over those defaults. |
+| `buildRatingDefinition` | function | `(id: string, name: string, lines: readonly LineDefinition[], overrides?: Partial<Omit<RatingDefinition, 'id' \| 'name' \| 'lines'>>) => RatingDefinition` | Builds a fresh `RatingDefinition` from a rating id, a display name, and the rating's ordered lines, with `overrides` merged over those defaults.            |
+| `buildEvidence`         | function | `(check: Check, actual: unknown, met: boolean \| undefined, labels?: Readonly<Record<string, string>>) => Evidence`                                        | Builds an `Evidence` row from an evaluated `Check`.                                                                                                         |
+| `buildEvidenceRows`     | function | `(checks: readonly Check[] \| undefined, results: readonly CheckResult[] \| undefined, labels?: Readonly<Record<string, string>>) => readonly Evidence[]`  | Builds one evidence row per authored check of a quantitative factor, joined to that check's evaluated result.                                               |
+| `buildWorksheetFactor`  | function | `(definition: Factor, results: readonly FactorResult[], labels?: Readonly<Record<string, string>>) => WorksheetFactor`                                     | Joins one authored quantitative factor to its evaluated `FactorResult`.                                                                                     |
+| `buildWorksheetGroup`   | function | `(definition: QuantitativeDefinition['groups'][number], results: readonly GroupResult[], labels?: Readonly<Record<string, string>>) => WorksheetGroup`     | Joins one authored quantitative group to its evaluated `GroupResult`.                                                                                       |
+| `buildWorksheetStep`    | function | `(stage: Stage, id: string \| undefined, name: string \| undefined, value: number, expression: string) => Step`                                            | Builds one display-neutral `Step` row.                                                                                                                      |
+| `buildWorksheetSteps`   | function | `(definition: QuantitativeDefinition, result: QuantitativeResult, groups: readonly WorksheetGroup[]) => readonly Step[]`                                   | Builds the ordered `Step` rows for a resolved `Worksheet`.                                                                                                  |
+| `buildWorksheet`        | function | `(definition: QuantitativeDefinition, result: QuantitativeResult, labels?: Readonly<Record<string, string>>) => Worksheet`                                 | Joins a `QuantitativeDefinition` and its `QuantitativeResult` into a `Worksheet` — the rating audit trail.                                                  |
+| `buildLineResult`       | function | `(definition: LineDefinition, result: QuantitativeResult, labels?: Readonly<Record<string, string>>) => LineResult`                                        | Builds a rated `LineResult` from a line's evaluated `QuantitativeResult`.                                                                                   |
+| `sumAmounts`            | function | `(lines: readonly LineResult[]) => number \| undefined`                                                                                                    | Sums defined line amounts.                                                                                                                                  |
 
 Each definition builder returns a fresh object and omits an absent optional key
 entirely:
@@ -258,9 +262,9 @@ sumAmounts([]) // undefined — no line carries an amount
 
 ### Factories
 
-| API           | Kind     | Summary                                                                                                                         |
-| ------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `createRater` | function | Creates a rating orchestrator over the shared quantitative engine, seeded from `RaterOptions` and returning a `RaterInterface`. |
+| Name          | Kind     | Signature                                    | Summary                                                                                                                         |
+| ------------- | -------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `createRater` | function | `(options?: RaterOptions) => RaterInterface` | Creates a rating orchestrator over the shared quantitative engine, seeded from `RaterOptions` and returning a `RaterInterface`. |
 
 `createRater` returns a live entity that owns an engine unless one is injected, so every
 rater is destroyed when its work is done.
@@ -278,9 +282,9 @@ rater.destroy()
 
 ### Classes
 
-| API     | Kind  | Summary                                                                                                                                   |
-| ------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `Rater` | class | Orchestrates rating — owns (or receives) the shared quantitative reasoning engine and projects results into the rating domain vocabulary. |
+| Name    | Kind  | Signature                                        | Summary                                                                                                                                   |
+| ------- | ----- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `Rater` | class | `new (options?: RaterOptions) => RaterInterface` | Orchestrates rating — owns (or receives) the shared quantitative reasoning engine and projects results into the rating domain vocabulary. |
 
 ## Methods
 
