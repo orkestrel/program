@@ -64,13 +64,9 @@ is `true` only when every line's `worksheet.success` is `true`.
 
 ### Types
 
-A `Shape` cell holds an interface's data members as bare names in braces, `?` marking an
-optional member and `plus` introducing its call-signature members, and a type alias's own
-type literal with a union's arms escaped as `\|`.
-
 | Name               | Kind      | Signature                                                                             | Summary                                                                              |
 | ------------------ | --------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `Stage`            | type      | `'factor' \| 'group' \| 'total'`                                                      | Names a worksheet derivation step stage.                                             |
+| `WorksheetStage`   | type      | `'factor' \| 'group' \| 'total'`                                                      | Names a worksheet derivation step stage.                                             |
 | `RaterErrorCode`   | type      | `'DEFINITION' \| 'MISMATCH' \| 'DESTROYED'`                                           | Names a coded `RaterError` programmer-error code.                                    |
 | `TotalHandler`     | type      | `(lines: readonly LineResult[]) => number \| undefined`                               | Represents a pure total port over resolved lines.                                    |
 | `LineDefinition`   | interface | `{ id, name, description?, rate, metadata? }`                                         | Represents one rateable line — a quantitative definition joined to display metadata. |
@@ -87,7 +83,7 @@ type literal with a union's arms escaped as `\|`.
 | `RaterInterface`   | interface | `{ emitter, rate(), destroy() }`                                                      | Represents the rating orchestrator over the shared quantitative reasoning engine.    |
 
 `RaterInterface`'s `emitter` is a `readonly` data member and stays in this table's
-`Shape` cell; the interface's call-signature members are documented under
+`Signature` cell; the interface's call-signature members are documented under
 [Methods](#methods).
 
 ### Errors
@@ -129,11 +125,9 @@ or extra members. `isRatingResult` is the borrowed-engine boundary: it and its n
 result guards reject arrays and check every published typed member without narrowing
 plain numbers, strings, or unknown values.
 
-In a guard table a `Shape` cell holds the type the guard narrows to.
-
 | Name                 | Kind     | Signature                                       | Summary                                                                |
 | -------------------- | -------- | ----------------------------------------------- | ---------------------------------------------------------------------- |
-| `isStage`            | const    | `Guard<Stage>`                                  | Determines whether a value is a `Stage` literal.                       |
+| `isWorksheetStage`   | const    | `Guard<WorksheetStage>`                         | Determines whether a value is a `WorksheetStage` literal.              |
 | `isLineDefinition`   | function | `(value: unknown) => value is LineDefinition`   | Determines whether a value is an exact `LineDefinition` record.        |
 | `isRatingDefinition` | function | `(value: unknown) => value is RatingDefinition` | Determines whether a value is an exact `RatingDefinition` record.      |
 | `isEvidence`         | function | `(value: unknown) => value is Evidence`         | Determines whether a value is an open result-side `Evidence` object.   |
@@ -147,10 +141,10 @@ In a guard table a `Shape` cell holds the type the guard narrows to.
 Each guard answers `true` for a value of its own shape:
 
 ```ts
-import { isLineDefinition, isRatingDefinition, isStage } from '@orkestrel/rater'
+import { isLineDefinition, isRatingDefinition, isWorksheetStage } from '@orkestrel/rater'
 import { createQuantitativeDefinition } from '@orkestrel/reason'
 
-isStage('group') // true
+isWorksheetStage('group') // true
 isLineDefinition({
 	id: 'base',
 	name: 'Base Amount',
@@ -172,7 +166,7 @@ and the worksheet-joining behind `Rater`'s `rate` projection.
 | `buildEvidenceRows`     | function | `(checks: readonly Check[] \| undefined, results: readonly CheckResult[] \| undefined, labels?: Readonly<Record<string, string>>) => readonly Evidence[]`  | Builds one evidence row per authored check of a quantitative factor, joined to that check's evaluated result.                                               |
 | `buildWorksheetFactor`  | function | `(definition: Factor, results: readonly FactorResult[], labels?: Readonly<Record<string, string>>) => WorksheetFactor`                                     | Joins one authored quantitative factor to its evaluated `FactorResult`.                                                                                     |
 | `buildWorksheetGroup`   | function | `(definition: QuantitativeDefinition['groups'][number], results: readonly GroupResult[], labels?: Readonly<Record<string, string>>) => WorksheetGroup`     | Joins one authored quantitative group to its evaluated `GroupResult`.                                                                                       |
-| `buildWorksheetStep`    | function | `(stage: Stage, id: string \| undefined, name: string \| undefined, value: number, expression: string) => Step`                                            | Builds one display-neutral `Step` row.                                                                                                                      |
+| `buildWorksheetStep`    | function | `(stage: WorksheetStage, id: string \| undefined, name: string \| undefined, value: number, expression: string) => Step`                                   | Builds one display-neutral `Step` row.                                                                                                                      |
 | `buildWorksheetSteps`   | function | `(definition: QuantitativeDefinition, result: QuantitativeResult, groups: readonly WorksheetGroup[]) => readonly Step[]`                                   | Builds the ordered `Step` rows for a resolved `Worksheet`.                                                                                                  |
 | `buildWorksheet`        | function | `(definition: QuantitativeDefinition, result: QuantitativeResult, labels?: Readonly<Record<string, string>>) => Worksheet`                                 | Joins a `QuantitativeDefinition` and its `QuantitativeResult` into a `Worksheet` — the rating audit trail.                                                  |
 | `buildLineResult`       | function | `(definition: LineDefinition, result: QuantitativeResult, labels?: Readonly<Record<string, string>>) => LineResult`                                        | Builds a rated `LineResult` from a line's evaluated `QuantitativeResult`.                                                                                   |
