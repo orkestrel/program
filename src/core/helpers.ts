@@ -11,6 +11,7 @@ import type {
 	LogicalDefinition,
 	LogicalResult,
 	ReasonInterface,
+	ReasonValidationResult,
 	Subject,
 } from '@orkestrel/reason'
 import type {
@@ -26,7 +27,6 @@ import type {
 	ProgramDefinition,
 	ProgramInput,
 	ProgramResult,
-	ProgramValidationResult,
 	Status,
 	Tally,
 } from './types.js'
@@ -51,13 +51,13 @@ import { isProgramDefinition } from './validators.js'
  *
  * @example
  * ```ts
- * import { hasReservedKey } from '@orkestrel/program'
+ * import { hasProgramKey } from '@orkestrel/program'
  *
- * hasReservedKey({ id: 'r1' }) // false
- * hasReservedKey({ id: 'r1', aggregate: {} }) // true
+ * hasProgramKey({ id: 'r1' }) // false
+ * hasProgramKey({ id: 'r1', aggregate: {} }) // true
  * ```
  */
-export function hasReservedKey(subject: Readonly<Record<string, unknown>>): boolean {
+export function hasProgramKey(subject: Readonly<Record<string, unknown>>): boolean {
 	return Object.hasOwn(subject, AGGREGATE_KEY) || Object.hasOwn(subject, OUTCOME_KEY)
 }
 
@@ -80,7 +80,7 @@ export function assertProgramSubject(subject: unknown): asserts subject is Subje
 	if (!isRecord(subject)) {
 		throw new ProgramError('MISMATCH', 'Program subject must be a record')
 	}
-	if (hasReservedKey(subject)) {
+	if (hasProgramKey(subject)) {
 		const key = Object.hasOwn(subject, AGGREGATE_KEY) ? AGGREGATE_KEY : OUTCOME_KEY
 		throw new ProgramError('RESERVED', `Subject contains a reserved program key '${key}'`, key)
 	}
@@ -514,7 +514,7 @@ export function validateProgramDefinition(
 	definition: ProgramDefinition,
 	qualifier: QualifierInterface,
 	engine: ReasonInterface,
-): ProgramValidationResult {
+): ReasonValidationResult {
 	if (!isProgramDefinition(definition)) {
 		return { valid: false, errors: ['Program definition has an invalid shape'], warnings: [] }
 	}

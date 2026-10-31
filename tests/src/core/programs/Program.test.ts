@@ -9,6 +9,7 @@ import {
 	createFactorGroup,
 	createQuantitativeDefinition,
 	createStaticFactor,
+	isReasonValidationResult,
 } from '@orkestrel/reason'
 import { STATUSES } from '@src/core'
 import type { Subject } from '@orkestrel/reason'
@@ -479,6 +480,31 @@ describe('Program', () => {
 			qualifier.destroy()
 			rater.destroy()
 			engine.destroy()
+		})
+	})
+
+	describe('validation result', () => {
+		it('returns a populated validation that reason accepts', () => {
+			const definition = buildProgramDefinition(
+				'',
+				'',
+				createQualificationDefinition('qualification', 'Qualification', []),
+				buildRatingDefinition('rating', 'Rating', []),
+			)
+			const program = createProgram(definition, { validate: false })
+			const result = program.validate()
+			expect(result.valid).toBe(false)
+			expect(result.errors.length).toBeGreaterThan(0)
+			expect(result.warnings.length).toBeGreaterThan(0)
+			expect(isReasonValidationResult(result)).toBe(true)
+			program.destroy()
+		})
+
+		it('returns a validation that reason accepts and a result it refuses', () => {
+			const program = createProgram(standardProgramDefinition)
+			expect(isReasonValidationResult(program.validate())).toBe(true)
+			expect(isReasonValidationResult(program.execute(eligibleSubject))).toBe(false)
+			program.destroy()
 		})
 	})
 

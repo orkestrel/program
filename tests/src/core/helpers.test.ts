@@ -26,7 +26,7 @@ import {
 	deriveStatus,
 	findMissingScopes,
 	formatGroupKey,
-	hasReservedKey,
+	hasProgramKey,
 	selectProgramLines,
 	sumFields,
 	tallySubject,
@@ -66,11 +66,11 @@ import { buildNotice, buildProgramDefinition } from '@src/core'
 import { createQualificationDefinition, createRuling } from '@orkestrel/qualifier'
 
 describe('helpers', () => {
-	describe('hasReservedKey', () => {
+	describe('hasProgramKey', () => {
 		it('detects aggregate and outcome keys', () => {
-			expect(hasReservedKey({ id: 'x' })).toBe(false)
-			expect(hasReservedKey({ id: 'x', [AGGREGATE_KEY]: {} })).toBe(true)
-			expect(hasReservedKey({ id: 'x', [OUTCOME_KEY]: {} })).toBe(true)
+			expect(hasProgramKey({ id: 'x' })).toBe(false)
+			expect(hasProgramKey({ id: 'x', [AGGREGATE_KEY]: {} })).toBe(true)
+			expect(hasProgramKey({ id: 'x', [OUTCOME_KEY]: {} })).toBe(true)
 		})
 	})
 

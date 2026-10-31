@@ -143,7 +143,6 @@ A `Shape` cell holds an interface's data members as bare names in braces, `?` ma
 | `ProgramDefinition`       | interface | `{ id, name, description?, qualification, rating?, notices?, authority?, aggregate?, metadata? }`                                                                                                                                                                                                                                                                                       | Describes a pure authored program definition.                                                          |
 | `ProgramResult`           | interface | `{ id, name, eligibility, status, decision?, qualification, rating?, determinations, success, trace, errors }`                                                                                                                                                                                                                                                                          | Describes one subject's complete program outcome.                                                      |
 | `AggregateResult`         | interface | `{ id, name, subjects, determinations, groups, tallies, count, sums, success, trace, errors }`                                                                                                                                                                                                                                                                                          | Describes a batch program outcome across every subject.                                                |
-| `ProgramValidationResult` | interface | `{ valid, errors, warnings }`                                                                                                                                                                                                                                                                                                                                                           | Describes semantic definition validation.                                                              |
 | `ProgramEventMap`         | type      | `{ readonly qualify: readonly [result: QualificationResult]; readonly rate: readonly [result: RatingResult]; readonly determine: readonly [result: Determination]; readonly decide: readonly [decision: Decision, result: ProgramResult]; readonly execute: readonly [result: ProgramResult]; readonly aggregate: readonly [result: AggregateResult]; readonly destroy: readonly []; }` | Describes the push observation surface of a `ProgramInterface`.                                        |
 | `ProgramOptions`          | interface | `{ qualifier?, rater?, engine?, validate?, labels?, on?, error? }`                                                                                                                                                                                                                                                                                                                      | Describes the options for `createProgram` / the `Program` constructor.                                 |
 | `ProgramInterface`        | interface | `{ id, name, definition, emitter, execute(), validate(), destroy() }`                                                                                                                                                                                                                                                                                                                   | Defines one compiled program that composes one qualifier and one rater over a shared reason engine.    |
@@ -155,7 +154,8 @@ Every public data member is `readonly`, every optional key is omitted rather tha
 `undefined`, and each name is single-word within its entity. Qualifier
 supplies `Eligibility`, `Premise`, `QualificationDefinition`, and `QualificationResult`;
 rater supplies `RatingDefinition` and `RatingResult`; reason supplies
-`LogicalDefinition`, `Subject`, and the engine; contract supplies `FieldPath` and
+`LogicalDefinition`, `Subject`, the engine, and the `ReasonValidationResult` type
+`validate` returns; contract supplies `FieldPath` and
 `JSONValue`; the emitter supplies the observation types.
 
 ### Constants
@@ -213,27 +213,26 @@ except the string-dictionary leaves (`sums`, `scopes`), which certify own member
 only — a value carrying them on a prototype is admitted unchecked.
 Holding `isProgramResult` therefore also holds qualifier's published
 `isQualificationResult` closure and rater's published `isRatingResult` closure.
-`isProgramValidationResult` checks this package's own interface directly rather
-than delegating to reason's independently evolvable validation contract.
+A `validate` result belongs to `@orkestrel/reason`, so narrow one with the
+`isReasonValidationResult` guard from that package.
 
 In a guard table a `Shape` cell holds the type the guard narrows to.
 
-| Name                        | Kind     | Signature                                                       | Summary                                                              |
-| --------------------------- | -------- | --------------------------------------------------------------- | -------------------------------------------------------------------- |
-| `isDecision`                | const    | `Guard<Decision>`                                               | Determines whether a value is a `Decision` literal.                  |
-| `isStatus`                  | const    | `Guard<Status>`                                                 | Determines whether a value is a `Status` literal.                    |
-| `isProgramEffect`           | const    | `Guard<ProgramEffect>`                                          | Determines whether a value is a `ProgramEffect` literal.             |
-| `isNotice`                  | function | `(value: unknown) => value is Notice`                           | Determines whether a value is an exact `Notice` record.              |
-| `isAggregateDefinition`     | function | `(value: unknown) => value is AggregateDefinition`              | Determines whether a value is an exact `AggregateDefinition` record. |
-| `isProgramDefinition`       | function | `(value: unknown) => value is ProgramDefinition`                | Determines whether a value is an exact `ProgramDefinition` record.   |
-| `isProgramSums`             | function | `(value: unknown) => value is Readonly<Record<string, number>>` | Determines whether a value is an open program sums record.           |
-| `isDetermination`           | const    | `Guard<Determination>`                                          | Determines whether a value is an open result-side `Determination`.   |
-| `isAggregateGroup`          | const    | `Guard<AggregateGroup>`                                         | Determines whether a value is an open result-side `AggregateGroup`.  |
-| `isTally`                   | const    | `Guard<Tally>`                                                  | Determines whether a value is an open result-side `Tally`.           |
-| `isTallies`                 | function | `(value: unknown) => value is Readonly<Record<Status, Tally>>`  | Determines whether a value is a total open status-tally record.      |
-| `isProgramResult`           | const    | `Guard<ProgramResult>`                                          | Determines whether a value is an open `ProgramResult`.               |
-| `isAggregateResult`         | const    | `Guard<AggregateResult>`                                        | Determines whether a value is an open `AggregateResult`.             |
-| `isProgramValidationResult` | const    | `Guard<ProgramValidationResult>`                                | Determines whether a value is an open `ProgramValidationResult`.     |
+| Name                    | Kind     | Signature                                                       | Summary                                                              |
+| ----------------------- | -------- | --------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `isDecision`            | const    | `Guard<Decision>`                                               | Determines whether a value is a `Decision` literal.                  |
+| `isStatus`              | const    | `Guard<Status>`                                                 | Determines whether a value is a `Status` literal.                    |
+| `isProgramEffect`       | const    | `Guard<ProgramEffect>`                                          | Determines whether a value is a `ProgramEffect` literal.             |
+| `isNotice`              | function | `(value: unknown) => value is Notice`                           | Determines whether a value is an exact `Notice` record.              |
+| `isAggregateDefinition` | function | `(value: unknown) => value is AggregateDefinition`              | Determines whether a value is an exact `AggregateDefinition` record. |
+| `isProgramDefinition`   | function | `(value: unknown) => value is ProgramDefinition`                | Determines whether a value is an exact `ProgramDefinition` record.   |
+| `isProgramSums`         | function | `(value: unknown) => value is Readonly<Record<string, number>>` | Determines whether a value is an open program sums record.           |
+| `isDetermination`       | const    | `Guard<Determination>`                                          | Determines whether a value is an open result-side `Determination`.   |
+| `isAggregateGroup`      | const    | `Guard<AggregateGroup>`                                         | Determines whether a value is an open result-side `AggregateGroup`.  |
+| `isTally`               | const    | `Guard<Tally>`                                                  | Determines whether a value is an open result-side `Tally`.           |
+| `isTallies`             | function | `(value: unknown) => value is Readonly<Record<Status, Tally>>`  | Determines whether a value is a total open status-tally record.      |
+| `isProgramResult`       | const    | `Guard<ProgramResult>`                                          | Determines whether a value is an open `ProgramResult`.               |
+| `isAggregateResult`     | const    | `Guard<AggregateResult>`                                        | Determines whether a value is an open `AggregateResult`.             |
 
 `isProgramSums` checks every own string-named member, including non-enumerable
 members, as a JavaScript `number`; it ignores inherited and symbol-named members.
@@ -249,7 +248,6 @@ import {
 	isNotice,
 	isProgramDefinition,
 	isProgramResult,
-	isProgramValidationResult,
 	isStatus,
 } from '@orkestrel/program'
 
@@ -261,7 +259,6 @@ isProgramDefinition(definition) // true
 isDetermination({ id: 'audit', effect: 'notice', applied: true, premises: [] }) // true
 isProgramResult(program.execute(subject)) // true
 isAggregateResult(program.execute(subjects)) // true
-isProgramValidationResult(program.validate()) // true
 ```
 
 `isProgramDefinition` establishes exact shape only. `Program.validate` additionally
@@ -288,10 +285,10 @@ never destroyed — it holds no state to tear down) purely to drive that reuse.
 | `buildOutcomeProjection`    | function | `(result: ProgramResult) => Readonly<Record<string, unknown>>`                                                                                                                                                                                                                                         | Builds the private authority outcome projection from an assembled program result.                                                    |
 | `buildQualificationSubject` | function | `(subject: Subject, aggregate?: AggregateProjection) => Subject`                                                                                                                                                                                                                                       | Adds optional aggregate context to a private subject copy for qualification.                                                         |
 | `findMissingScopes`         | function | `(definition: ProgramDefinition) => readonly string[]`                                                                                                                                                                                                                                                 | Returns authored scopes (qualification ruling scopes or notice scopes) that name no rating line on the program.                      |
-| `hasReservedKey`            | function | `(subject: Readonly<Record<string, unknown>>) => boolean`                                                                                                                                                                                                                                              | Determines whether a caller subject already carries a reserved program key.                                                          |
+| `hasProgramKey`             | function | `(subject: Readonly<Record<string, unknown>>) => boolean`                                                                                                                                                                                                                                              | Determines whether a caller subject already carries a reserved program key.                                                          |
 | `assertProgramSubject`      | function | `(subject: unknown) => asserts subject is Subject`                                                                                                                                                                                                                                                     | Asserts a value is a valid program `Subject`, narrowing it in place.                                                                 |
 | `assertProgramDefinition`   | function | `(definition: ProgramDefinition) => void`                                                                                                                                                                                                                                                              | Asserts a program definition's always-on construction invariants — missing scope references and duplicate rating-line or notice ids. |
-| `validateProgramDefinition` | function | `(definition: ProgramDefinition, qualifier: QualifierInterface, engine: ReasonInterface) => ProgramValidationResult`                                                                                                                                                                                   | Validates a program definition's shape, references, and nested definitions.                                                          |
+| `validateProgramDefinition` | function | `(definition: ProgramDefinition, qualifier: QualifierInterface, engine: ReasonInterface) => ReasonValidationResult`                                                                                                                                                                                    | Validates a program definition's shape, references, and nested definitions.                                                          |
 | `formatGroupKey`            | function | `(subject: Subject, partition: FieldPath) => string`                                                                                                                                                                                                                                                   | Coerces a subject's partition-key field to its group-key string.                                                                     |
 | `sumFields`                 | function | `(sums: Readonly<Record<string, number>>, subject: Subject, fields: readonly FieldPath[]) => Readonly<Record<string, number>>`                                                                                                                                                                         | Folds one subject's finite aggregate field values into a sums record.                                                                |
 | `aggregateSums`             | function | `(subjects: readonly Subject[], fields: readonly FieldPath[]) => Readonly<Record<string, number>>`                                                                                                                                                                                                     | Sums aggregate fields across a batch of subjects.                                                                                    |
@@ -315,12 +312,12 @@ import {
 	assertProgramDefinition,
 	assertProgramSubject,
 	decideEligibility,
-	hasReservedKey,
+	hasProgramKey,
 	selectProgramLines,
 } from '@orkestrel/program'
 
-hasReservedKey({ id: 'r1' }) // false
-hasReservedKey({ id: 'r1', aggregate: {} }) // true
+hasProgramKey({ id: 'r1' }) // false
+hasProgramKey({ id: 'r1', aggregate: {} }) // true
 assertProgramSubject({ id: 'r1' }) // narrows to Subject; throws ProgramError('RESERVED') on a reserved key
 assertProgramDefinition(definition) // throws ProgramError('MISSING' | 'DUPLICATE') at construction, regardless of options.validate
 selectProgramLines(lines, { wind: 'ineligible' }) // every line except the 'wind' line
@@ -415,7 +412,7 @@ than qualification or rating alone.
 | Method     | Returns                              | Summary                                                          |
 | ---------- | ------------------------------------ | ---------------------------------------------------------------- |
 | `execute`  | `AggregateResult` or `ProgramResult` | Executes a subject list as one aggregate-aware batch.            |
-| `validate` | `ProgramValidationResult`            | Validates this program's definition and every nested definition. |
+| `validate` | `ReasonValidationResult`             | Validates this program's definition and every nested definition. |
 | `destroy`  | `void`                               | Destroys this program, idempotently.                             |
 
 ```ts

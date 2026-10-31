@@ -1,7 +1,13 @@
 import type { EmitterInterface } from '@orkestrel/emitter'
 import type { QualificationResult, QualifierInterface } from '@orkestrel/qualifier'
 import type { RaterInterface, RatingResult } from '@orkestrel/rater'
-import type { EvaluatorInterface, LogicalResult, ReasonInterface, Subject } from '@orkestrel/reason'
+import type {
+	EvaluatorInterface,
+	LogicalResult,
+	ReasonInterface,
+	ReasonValidationResult,
+	Subject,
+} from '@orkestrel/reason'
 import type {
 	AggregateGroup,
 	AggregateProjection,
@@ -12,7 +18,6 @@ import type {
 	ProgramInterface,
 	ProgramOptions,
 	ProgramResult,
-	ProgramValidationResult,
 	Status,
 	Tally,
 } from '../types.js'
@@ -269,7 +274,7 @@ export class Program implements ProgramInterface {
 	 * program.destroy()
 	 * ```
 	 */
-	validate(): ProgramValidationResult {
+	validate(): ReasonValidationResult {
 		this.#alive()
 		return validateProgramDefinition(this.definition, this.#qualifier, this.#engine)
 	}

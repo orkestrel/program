@@ -8,7 +8,12 @@ import type {
 	QualifierInterface,
 } from '@orkestrel/qualifier'
 import type { RatingDefinition, RatingResult, RaterInterface } from '@orkestrel/rater'
-import type { LogicalDefinition, ReasonInterface, Subject } from '@orkestrel/reason'
+import type {
+	LogicalDefinition,
+	ReasonInterface,
+	ReasonValidationResult,
+	Subject,
+} from '@orkestrel/reason'
 import type { STATUSES } from './constants.js'
 
 /** Identifies a final authority outcome, derived from global eligibility. */
@@ -183,13 +188,6 @@ export interface AggregateResult {
 	readonly errors: readonly string[]
 }
 
-/** Describes semantic definition validation. */
-export interface ProgramValidationResult {
-	readonly valid: boolean
-	readonly errors: readonly string[]
-	readonly warnings: readonly string[]
-}
-
 /**
  * Describes the push observation surface of a {@link ProgramInterface}.
  *
@@ -334,7 +332,7 @@ export interface ProgramInterface {
 	 * program.destroy()
 	 * ```
 	 */
-	validate(): ProgramValidationResult
+	validate(): ReasonValidationResult
 	/**
 	 * Destroys this program, idempotently.
 	 *

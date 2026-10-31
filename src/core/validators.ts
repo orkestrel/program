@@ -9,7 +9,6 @@ import type {
 	ProgramDefinition,
 	ProgramEffect,
 	ProgramResult,
-	ProgramValidationResult,
 	Status,
 	Tally,
 } from './types.js'
@@ -334,29 +333,4 @@ export const isAggregateResult: Guard<AggregateResult> = objectOf({
 	success: isBoolean,
 	trace: arrayOf(isString),
 	errors: arrayOf(isString),
-})
-
-/**
- * Determines whether a value is an open {@link ProgramValidationResult}.
- *
- * @remarks
- * `ProgramValidationResult` is this package's own declared interface, not an
- * alias of reason's validation result. This guard therefore checks the
- * program-owned members directly so the contracts may evolve independently.
- * Unknown members and class instances are admitted. Arrays are refused.
- *
- * @param value - The candidate value
- * @returns True if every published program-validation member conforms; false otherwise
- *
- * @example
- * ```ts
- * import { isProgramValidationResult } from '@orkestrel/program'
- *
- * isProgramValidationResult({ valid: true, errors: [], warnings: [] }) // true
- * ```
- */
-export const isProgramValidationResult: Guard<ProgramValidationResult> = objectOf({
-	valid: isBoolean,
-	errors: arrayOf(isString),
-	warnings: arrayOf(isString),
 })

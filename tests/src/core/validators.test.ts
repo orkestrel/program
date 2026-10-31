@@ -16,7 +16,6 @@ import {
 	isProgramEffect,
 	isProgramResult,
 	isProgramSums,
-	isProgramValidationResult,
 	isStatus,
 	isTallies,
 	isTally,
@@ -33,8 +32,6 @@ import {
 	standardRating,
 } from '../../setup.js'
 import { createHostileValues } from '@orkestrel/test'
-import { createQualificationDefinition } from '@orkestrel/qualifier'
-import { buildRatingDefinition } from '@orkestrel/rater'
 import { createAtom, createLogicalDefinition, createRule } from '@orkestrel/reason'
 
 describe('validators', () => {
@@ -474,49 +471,6 @@ describe('validators', () => {
 		it('refuses every hostile value without throwing', () => {
 			for (const [index, value] of createHostileValues().entries()) {
 				const outcome = attempt(() => isAggregateResult(value))
-				expect(() => {
-					if (!outcome.success) throw outcome.error
-				}, `hostile value ${index}`).not.toThrow()
-				const accepted = outcome.success ? outcome.value : undefined
-				expect(accepted, `hostile value ${index}`).toBe(false)
-			}
-		})
-	})
-
-	describe('isProgramValidationResult', () => {
-		it('accepts a populated real validation, unknown members, and a class instance', () => {
-			const definition = buildProgramDefinition(
-				'',
-				'',
-				createQualificationDefinition('qualification', 'Qualification', []),
-				buildRatingDefinition('rating', 'Rating', []),
-			)
-			const program = createProgram(definition, { validate: false })
-			const result = program.validate()
-			expect(result.valid).toBe(false)
-			expect(result.errors.length).toBeGreaterThan(0)
-			expect(result.warnings.length).toBeGreaterThan(0)
-			expect(isProgramValidationResult(result)).toBe(true)
-			expect(isProgramValidationResult({ ...result, extra: true })).toBe(true)
-			expect(isProgramValidationResult(createResultClass(result))).toBe(true)
-			program.destroy()
-		})
-
-		it('refuses malformed members and a ProgramResult outside validation membership', () => {
-			const validation = { valid: true, errors: [], warnings: [] }
-			expect(isProgramValidationResult({ ...validation, valid: 'yes' })).toBe(false)
-			expect(isProgramValidationResult({ ...validation, errors: [1] })).toBe(false)
-			expect(isProgramValidationResult({ ...validation, warnings: [1] })).toBe(false)
-			expect(isProgramValidationResult([])).toBe(false)
-
-			const program = createProgram(standardProgramDefinition)
-			expect(isProgramValidationResult(program.execute(eligibleSubject))).toBe(false)
-			program.destroy()
-		})
-
-		it('refuses every hostile value without throwing', () => {
-			for (const [index, value] of createHostileValues().entries()) {
-				const outcome = attempt(() => isProgramValidationResult(value))
 				expect(() => {
 					if (!outcome.success) throw outcome.error
 				}, `hostile value ${index}`).not.toThrow()
