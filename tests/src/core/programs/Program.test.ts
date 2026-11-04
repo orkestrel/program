@@ -1394,6 +1394,114 @@ describe('Program — a batch and its door', () => {
 })
 
 describe('Program — what validate refuses', () => {
+	it('refuses shape fields reserved for program projections', () => {
+		for (const key of ['outcome', 'aggregate']) {
+			const program = createProgram(
+				buildProgramDefinition('p', 'P', createQualificationDefinition('q', 'Q', []), undefined, {
+					shape: objectShape({ [key]: numberShape() }),
+				}),
+				{ validate: false },
+			)
+			expect(program.validate().errors).toContain(`Shape declares the reserved key '${key}'`)
+			program.destroy()
+		}
+	})
+
+	it('refuses shape fields that a qualification rule concludes', () => {
+		const program = createProgram(
+			buildProgramDefinition(
+				'p',
+				'P',
+				createQualificationDefinition('q', 'Q', [
+					createLogicalDefinition('g', 'G', [
+						createRule('r', [createAtom('amount', 'above', 0)], createAtom('ok', 'equals', true)),
+					]),
+				]),
+				undefined,
+				{ shape: objectShape({ amount: numberShape(), ok: booleanShape() }) },
+			),
+			{ validate: false },
+		)
+		expect(program.validate().errors).toContain('Shape declares conclusion "ok"')
+		program.destroy()
+	})
+
+	it('refuses ruling tokens absent from the program shape', () => {
+		const program = createProgram(
+			buildProgramDefinition(
+				'p',
+				'P',
+				createQualificationDefinition(
+					'q',
+					'Q',
+					[
+						createLogicalDefinition('g', 'G', [
+							createRule('r', [createAtom('amount', 'above', 0)], createAtom('ok', 'equals', true)),
+						]),
+					],
+					{
+						rulings: [
+							createRuling('r', 'g', 'r', 'referral', {
+								message: 'Need {{ghost}} and {{amount}}.',
+							}),
+						],
+					},
+				),
+				undefined,
+				{ shape: objectShape({ amount: numberShape() }) },
+			),
+			{ validate: false },
+		)
+		expect(program.validate().errors).toEqual([
+			'Ruling \'r\' message reads "ghost", and the shape does not declare it',
+		])
+		program.destroy()
+	})
+
+	it('refuses authority reads outside its computed projection', () => {
+		for (const field of [['outcome', 'ghost'], ['licensed'], ['outcome', 'status', 'ghost']]) {
+			const authority = createLogicalDefinition('a', 'A', [
+				createRule('r', [createAtom(field, 'equals', true)], createAtom('limited', 'equals', true)),
+			])
+			const definition = buildAuthorityProgram(authority)
+			const program = createProgram(definition, { validate: false })
+			expect(program.validate().errors).toContain(
+				`Authority reads "${field.join('.')}", which its outcome projection does not declare`,
+			)
+			expect(() => createProgram(definition, { validate: true })).toThrow(/Authority reads/)
+			program.destroy()
+		}
+	})
+
+	it('keeps subject values out of authority outcome reads with validation on and off', () => {
+		for (const validate of [true, false]) {
+			const program = createProgram(
+				buildAuthorityProgram(
+					createLogicalDefinition('a', 'A', [
+						createRule(
+							'r',
+							[createAtom(['outcome', 'total'], 'above', 1000000)],
+							createAtom('limited', 'equals', true),
+						),
+					]),
+				),
+				{ validate },
+			)
+			const result = program.execute({
+				...eligibleSubject,
+				total: 2000000,
+				'outcome.total': 2000000,
+			})
+			expect(result.success).toBe(true)
+			expect(result.rating?.total).toBeLessThan(1000000)
+			expect(result.decision).toBe('approved')
+			expect(result.determinations.filter((entry) => entry.effect === 'limit')).toEqual([])
+			expect(() => program.execute({ ...eligibleSubject, outcome: { total: 2000000 } })).toThrow(
+				/reserved/,
+			)
+			program.destroy()
+		}
+	})
 	const shape = objectShape({ id: stringShape(), amount: numberShape() })
 
 	it('refuses an authority over a qualification with no passes, and allows rating alone', () => {

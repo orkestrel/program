@@ -31,8 +31,19 @@ import type {
 	Status,
 	Tally,
 } from './types.js'
-import { isFiniteNumber, isRecord, isString, resolveField } from '@orkestrel/contract'
 import {
+	booleanShape,
+	isFiniteNumber,
+	isRecord,
+	isString,
+	numberShape,
+	objectShape,
+	preview,
+	resolveField,
+	stringShape,
+} from '@orkestrel/contract'
+import {
+	describeUnknownTokens,
 	findMessageTokens,
 	findRule,
 	interpolateMessage,
@@ -43,7 +54,9 @@ import {
 } from '@orkestrel/qualifier'
 import { isRaterError, projectRatingResult } from '@orkestrel/rater'
 import {
+	collectConcluders,
 	describeFault,
+	extractAtoms,
 	filterUniqueFaults,
 	filterUniqueFields,
 	findDuplicates,
@@ -53,6 +66,7 @@ import {
 	isReasonValidationResult,
 	projectValue,
 	scanShape,
+	scanShapeConclusions,
 	scanShapeReads,
 } from '@orkestrel/reason'
 import { AGGREGATE_KEY, ELIGIBILITY_DECISIONS, OUTCOME_KEY, STATUSES } from './constants.js'
@@ -682,6 +696,15 @@ export function scanProgramShape(definition: ProgramDefinition): ShapeScan {
 		errors: [
 			...nested,
 			...scanShape(shape),
+			...[OUTCOME_KEY, AGGREGATE_KEY].flatMap((key) =>
+				findFieldShape(shape, key).shape === undefined
+					? []
+					: [`Shape declares the reserved key '${key}'`],
+			),
+			...definition.qualification.passes.flatMap((pass) =>
+				pass.reasoning === 'logical' ? scanShapeConclusions(shape, pass.rules) : [],
+			),
+			...describeUnknownTokens({ ...definition.qualification, shape }),
 			...passes.errors,
 			...reads.errors,
 			...tokens,
@@ -949,6 +972,32 @@ export function validateProgramDefinition(
 
 	const authority = definition.authority
 	if (authority !== undefined) {
+		const projection = objectShape({
+			[OUTCOME_KEY]: objectShape({
+				id: stringShape(),
+				eligibility: stringShape(),
+				status: stringShape(),
+				rated: booleanShape(),
+				total: numberShape(),
+				scopes: objectShape(Object.fromEntries([...lines].map((line) => [line, stringShape()]))),
+			}),
+		})
+		const enabled = authority.rules.filter((rule) => rule.enabled !== false)
+		const conclusions = collectConcluders(enabled)
+		errors.push(
+			...enabled.flatMap((rule) =>
+				rule.premises.flatMap((premise) =>
+					extractAtoms(premise).flatMap(({ check }) =>
+						conclusions.has(formatField(check.field)) ||
+						findFieldShape(projection, check.field).declared
+							? []
+							: [
+									`Authority reads ${preview(formatField(check.field))}, which its outcome projection does not declare`,
+								],
+					),
+				),
+			),
+		)
 		const validation = engine.validate(authority)
 		if (isReasonValidationResult(validation)) {
 			errors.push(...validation.errors.map((error) => `authority: ${error}`))

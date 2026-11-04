@@ -782,6 +782,13 @@ owned emitter.
 
 ### Validation
 
+The program's subject shape cannot declare `outcome`, `aggregate`, or a qualification rule's
+conclusion field. Ruling message tokens are checked against that root shape. An authority reads
+only the computed outcome projection or its own derived conclusions; subject fields and unknown
+outcome fields are refused at validation. The projection declares `id`, `eligibility`, `status`,
+`rated`, `total`, and `scopes` keyed by rating-line id. A declared field can still be absent at
+execution: `total` is absent when rating did not run, and an unread authority produces no decision.
+
 `Program.validate` (`validateProgramDefinition`) checks:
 
 1. exact shape through `isProgramDefinition` — this alone establishes rating structure and authority/gates shape, so validate performs no redundant re-check of either
