@@ -1128,7 +1128,7 @@ describe('Program — the door', () => {
 		expect(result.rating).toBeUndefined()
 		expect(result.success).toBe(false)
 		expect(result.faults).toEqual([{ reason: 'missing', path: ['licensed'], expected: 'boolean' }])
-		expect(result.errors).toEqual(['Field "licensed" is missing'])
+		expect(result.errors).toEqual(['licensed: missing; expected boolean'])
 		expect(engine.calls).toEqual([])
 		program.destroy()
 		engine.destroy()
@@ -1278,7 +1278,7 @@ describe('Program — missing information reads incomplete', () => {
 		expect(result.decision).toBeUndefined()
 		expect(result.faults).toEqual([])
 		expect(result.status).toBe('eligible')
-		expect(result.errors).toEqual(['Field "outcome.total" is missing'])
+		expect(result.errors).toEqual(['outcome.total: missing; expected number'])
 		program.destroy()
 	})
 
@@ -1698,7 +1698,7 @@ describe('Program — what a borrowed part says', () => {
 		expect(result.status).toBe('ineligible')
 		expect(result.decision).toBeUndefined()
 		expect(result.success).toBe(false)
-		expect(result.errors).toEqual(['Field "age" is missing'])
+		expect(result.errors).toEqual(['age: missing; expected number'])
 		program.destroy()
 		qualifier.destroy()
 	})
@@ -1919,10 +1919,10 @@ describe('Program — published contracts', () => {
 		program.destroy()
 	})
 
-	it('names the gap: is admits a malformed nested shape, and the guard refuses it', () => {
+	it('refuses a malformed nested shape alongside the guard', () => {
 		const contract = createProgramDefinitionContract()
 		for (const shape of [42, null, {}, { type: 'nonsense' }]) {
-			expect(contract.is({ ...standardProgramDefinition, shape })).toBe(true)
+			expect(contract.is({ ...standardProgramDefinition, shape })).toBe(false)
 			expect(isProgramDefinition({ ...standardProgramDefinition, shape })).toBe(false)
 		}
 	})

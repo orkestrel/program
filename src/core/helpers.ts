@@ -33,6 +33,7 @@ import type {
 } from './types.js'
 import {
 	booleanShape,
+	describeFaults,
 	isFiniteNumber,
 	isRecord,
 	isString,
@@ -55,7 +56,6 @@ import {
 import { isRaterError, projectRatingResult } from '@orkestrel/rater'
 import {
 	collectConcluders,
-	describeFault,
 	extractAtoms,
 	filterUniqueFaults,
 	filterUniqueFields,
@@ -380,7 +380,7 @@ export function buildProgramResult(
 		[...qualification.faults, ...(rating?.faults ?? [])].filter((fault) => isInputFault(fault)),
 	)
 	const said = [...qualification.errors, ...(rating?.errors ?? []), ...authorityErrors]
-	const named = said.length === 0 ? faults.map((fault) => describeFault(fault)) : said
+	const named = said.length === 0 ? faults.map((fault) => describeFaults([fault])) : said
 	const held =
 		qualification.success &&
 		(rating === undefined || rating.success) &&

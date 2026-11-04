@@ -1,6 +1,7 @@
 import type { ContractShape } from '@orkestrel/contract'
 import {
 	arrayShape,
+	auditFaultShape,
 	booleanShape,
 	jsonShape,
 	literalShape,
@@ -9,6 +10,7 @@ import {
 	objectShape,
 	optionalShape,
 	recordShape,
+	shapeShape,
 	stringShape,
 } from '@orkestrel/contract'
 import {
@@ -18,12 +20,7 @@ import {
 	qualificationResultShape,
 } from '@orkestrel/qualifier'
 import { ratingDefinitionShape, ratingResultShape } from '@orkestrel/rater'
-import {
-	CHECK_STATES,
-	createLogicalDefinitionShape,
-	faultShape,
-	fieldPathShape,
-} from '@orkestrel/reason'
+import { CHECK_STATES, createLogicalDefinitionShape, fieldPathShape } from '@orkestrel/reason'
 import { DECISIONS, PROGRAM_EFFECTS, STATUSES } from './constants.js'
 
 // A program definition and result as shapes, so they reach an LLM, a tool, and MCP as JSON Schema.
@@ -40,8 +37,8 @@ export const noticeShape: ContractShape = objectShape({
  * Creates the shape of a `ProgramDefinition`.
  *
  * @remarks
- * A function because a logical definition's shape is recursive and costs at import. `shape` is any
- * JSON value here. A `ContractShape` is recursive too, so the guard reads it.
+ * A function because a logical definition's shape is recursive and costs at import.
+ * The nested subject declaration is checked through `shapeShape`.
  *
  * @returns The program definition's shape
  *
@@ -71,7 +68,7 @@ export function createProgramDefinitionShape(): ContractShape {
 			}),
 		),
 		metadata: optionalShape(jsonShape()),
-		shape: optionalShape(jsonShape()),
+		shape: optionalShape(shapeShape()),
 	})
 }
 
@@ -98,8 +95,8 @@ export const programResultShape: ContractShape = objectShape({
 	success: booleanShape(),
 	trace: arrayShape(stringShape()),
 	errors: arrayShape(stringShape()),
-	faults: arrayShape(faultShape),
-	repairs: arrayShape(faultShape),
+	faults: arrayShape(auditFaultShape()),
+	repairs: arrayShape(auditFaultShape()),
 	defaulted: arrayShape(fieldPathShape),
 })
 
@@ -127,7 +124,7 @@ export const aggregateResultShape: ContractShape = objectShape({
 	success: booleanShape(),
 	trace: arrayShape(stringShape()),
 	errors: arrayShape(stringShape()),
-	faults: arrayShape(faultShape),
-	repairs: arrayShape(faultShape),
+	faults: arrayShape(auditFaultShape()),
+	repairs: arrayShape(auditFaultShape()),
 	defaulted: arrayShape(fieldPathShape),
 })

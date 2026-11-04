@@ -29,7 +29,26 @@ import type {
 	ProgramResult,
 	Status,
 } from '@src/core'
-import { isArray } from '@orkestrel/contract'
+import { createContract, isArray } from '@orkestrel/contract'
+import {
+	aggregateResultContract,
+	createProgram,
+	createProgramDefinitionContract,
+	determinationShape,
+	isAggregateResult,
+	isDetermination,
+	isNotice,
+	isProgramDefinition,
+	isProgramResult,
+	isProgramSums,
+	isTally,
+	noticeShape,
+	programResultContract,
+	programSumsShape,
+	projectAggregateResult,
+	projectProgramResult,
+	tallyShape,
+} from '@src/core'
 import { createQualificationDefinition, createQualifier, createRuling } from '@orkestrel/qualifier'
 import {
 	buildLineDefinition,
@@ -1319,6 +1338,82 @@ export function collectCorpusDefinitions(): readonly ProgramDefinition[] {
 		buildCarrierProgram(),
 		buildEligibilityOnlyNoticeMissingScopeDefinition(),
 	]
+}
+
+/** Builds the standing shape/guard table from real program outcomes. */
+export function buildProgramContractCases() {
+	const program = createProgram(standardProgramDefinition)
+	try {
+		const single = program.execute({})
+		const batch = program.execute([{}])
+		return {
+			definitions: [
+				{
+					name: 'program definition',
+					wire: createProgramDefinitionContract(),
+					guard: isProgramDefinition,
+					positive: standardProgramDefinition,
+					negative: {},
+				},
+				{
+					name: 'notice',
+					wire: createContract(noticeShape),
+					guard: isNotice,
+					positive: { id: 'notice', message: 'Read this' },
+					negative: {},
+				},
+			].map((row) => ({ ...row, direction: 'is implies guard', project: undefined })),
+			results: [
+				{
+					direction: 'producer implies wire after projection',
+					name: 'program result',
+					wire: programResultContract,
+					guard: isProgramResult,
+					positive: single,
+					negative: {},
+					project: () => projectProgramResult(single),
+				},
+				{
+					direction: 'producer implies wire after projection',
+					name: 'aggregate result',
+					wire: aggregateResultContract,
+					guard: isAggregateResult,
+					positive: batch,
+					negative: {},
+					project: () => projectAggregateResult(batch),
+				},
+				{
+					direction: 'producer implies wire after projection',
+					name: 'determination',
+					wire: createContract(determinationShape),
+					guard: isDetermination,
+					positive: { id: 'notice', effect: 'notice', state: 'met', premises: [] },
+					negative: {},
+					project: () => ({ id: 'notice', effect: 'notice', state: 'met', premises: [] }),
+				},
+				{
+					direction: 'producer implies wire after projection',
+					name: 'sums',
+					wire: createContract(programSumsShape),
+					guard: isProgramSums,
+					positive: { amount: 1 },
+					negative: null,
+					project: () => ({ amount: 1 }),
+				},
+				{
+					direction: 'producer implies wire after projection',
+					name: 'tally',
+					wire: createContract(tallyShape),
+					guard: isTally,
+					positive: { count: 1, sums: {} },
+					negative: {},
+					project: () => ({ count: 1, sums: {} }),
+				},
+			],
+		}
+	} finally {
+		program.destroy()
+	}
 }
 
 /** Builds a nested record with the requested depth and optional level markers. */
