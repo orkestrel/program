@@ -1,17 +1,43 @@
+import type { ContractShape } from '@orkestrel/contract'
 import { describe, expect, it } from 'vitest'
-import { createProgram } from '@src/core'
-import { createQualifier } from '@orkestrel/qualifier'
+import {
+	aggregateResultContract,
+	buildAggregateDefinition,
+	buildNotice,
+	buildProgramDefinition,
+	createProgram,
+	createProgramDefinitionContract,
+	isProgramDefinition,
+	programResultContract,
+	projectAggregateResult,
+	projectProgramResult,
+	STATUSES,
+} from '@src/core'
+import {
+	booleanShape,
+	nullableShape,
+	nullShape,
+	numberShape,
+	objectShape,
+	optionalShape,
+	stringShape,
+	unionShape,
+} from '@orkestrel/contract'
+import { createQualificationDefinition, createQualifier, createRuling } from '@orkestrel/qualifier'
 import { buildLineDefinition, buildRatingDefinition, createRater } from '@orkestrel/rater'
 import {
+	createAtom,
+	createFieldFactor,
+	createLogicalDefinition,
 	createLogicalReasoner,
 	createQuantitativeReasoner,
 	createReason,
 	createFactorGroup,
 	createQuantitativeDefinition,
+	createRule,
 	createStaticFactor,
 	isReasonValidationResult,
 } from '@orkestrel/reason'
-import { STATUSES } from '@src/core'
 import type { Subject } from '@orkestrel/reason'
 import { captureError, createRecorder } from '@orkestrel/test'
 import {
@@ -63,9 +89,6 @@ import {
 	standardProgramDefinition,
 	unratedAuthority,
 } from '../../../setup.js'
-import { buildProgramDefinition, buildNotice } from '@src/core'
-import { createQualificationDefinition, createRuling } from '@orkestrel/qualifier'
-import { createLogicalDefinition, createRule, createAtom } from '@orkestrel/reason'
 import { standardQualification, standardRating } from '../../../setup.js'
 
 describe('Program', () => {
@@ -178,6 +201,7 @@ describe('Program', () => {
 						authority,
 					},
 				),
+				{ validate: false },
 			)
 			const premise = program.definition.authority?.rules[0]?.premises[0]
 			if (premise?.form !== 'atom') throw new Error('Expected the stored premise to be an atom')
@@ -331,9 +355,9 @@ describe('Program', () => {
 			const result = program.execute(conditionalSubject)
 			expect(result.status).toBe('conditional')
 			expect(result.rating?.total).toBe(100)
-			expect(result.determinations.some((entry) => entry.effect === 'limit' && entry.applied)).toBe(
-				true,
-			)
+			expect(
+				result.determinations.some((entry) => entry.effect === 'limit' && entry.state === 'met'),
+			).toBe(true)
 			expect(result.decision).toBeUndefined()
 			program.destroy()
 		})
@@ -378,14 +402,14 @@ describe('Program', () => {
 				emptyLinesProgramDefinition.rating,
 				{ authority: unratedAuthority },
 			)
-			const program = createProgram(definition)
+			const program = createProgram(definition, { validate: false })
 			const events = recordEvents(program)
 			const result = program.execute({ id: 'unrated-authority' })
 			expect(result.status).toBe('unrated')
 			expect(result.eligibility).toBe('eligible')
-			expect(result.determinations.some((entry) => entry.effect === 'limit' && entry.applied)).toBe(
-				true,
-			)
+			expect(
+				result.determinations.some((entry) => entry.effect === 'limit' && entry.state === 'met'),
+			).toBe(true)
 			expect(result.decision).toBeUndefined()
 			expect(events.names).toContain('determine')
 			expect(events.names).not.toContain('decide')
@@ -659,7 +683,6 @@ describe('Program', () => {
 			expect(result.subjects.every((entry) => entry.success)).toBe(true)
 			expect(result.success).toBe(false)
 			expect(result.errors.length).toBeGreaterThan(0)
-			expect(result.trace.length).toBeGreaterThan(0)
 			program.destroy()
 		})
 	})
@@ -681,7 +704,7 @@ describe('Program', () => {
 			const result = program.execute(eligibleSubject)
 			expect(result.success).toBe(false)
 			expect(result.eligibility).toBe('referral')
-			expect(result.status).toBe('referral')
+			expect(result.status).toBe('incomplete')
 			expect(result.decision).toBeUndefined()
 			program.destroy()
 		})
@@ -1072,5 +1095,506 @@ describe('Program', () => {
 			program.destroy()
 			expect(() => program.emitter).not.toThrow()
 		})
+	})
+})
+
+describe('Program — the door', () => {
+	const shape = objectShape({
+		id: stringShape(),
+		licensed: booleanShape(),
+		note: optionalShape(stringShape(), { default: 'none' }),
+	})
+	const shaped = buildProgramDefinition(
+		'shaped',
+		'Shaped',
+		standardProgramDefinition.qualification,
+		standardProgramDefinition.rating,
+		{ shape },
+	)
+
+	it('a subject the shape refuses reads incomplete, referral, no decision, and runs nothing', () => {
+		const engine = createRecordingEngine()
+		const program = createProgram(shaped, { engine })
+		const result = program.execute({ id: 'r' })
+		expect(result.status).toBe('incomplete')
+		expect(result.eligibility).toBe('referral')
+		expect(result.decision).toBeUndefined()
+		expect(result.rating).toBeUndefined()
+		expect(result.success).toBe(false)
+		expect(result.faults).toEqual([{ reason: 'missing', path: ['licensed'], expected: 'boolean' }])
+		expect(result.errors).toEqual(['Field "licensed" is missing'])
+		expect(engine.calls).toEqual([])
+		program.destroy()
+		engine.destroy()
+	})
+
+	it('what the door repaired and filled reaches the engines and is reported', () => {
+		const program = createProgram(shaped)
+		const result = program.execute({ id: 'r', licensed: 'true' })
+		expect(result.status).toBe('eligible')
+		expect(result.repairs.map((fault) => fault.path)).toEqual([['licensed']])
+		expect(result.defaulted).toEqual([['note']])
+		program.destroy()
+	})
+
+	it('an undeclared key refuses, and its fault says so', () => {
+		const program = createProgram(shaped)
+		const result = program.execute({ id: 'r', licensed: true, licenced: true })
+		expect(result.status).toBe('incomplete')
+		expect(result.faults).toEqual([{ reason: 'extra', path: ['licenced'] }])
+		program.destroy()
+	})
+
+	it('a notice interpolates what the door admitted', () => {
+		const program = createProgram(
+			buildProgramDefinition('n', 'N', standardProgramDefinition.qualification, undefined, {
+				shape,
+				notices: [buildNotice('note', 'Note: {{note}}')],
+			}),
+		)
+		const result = program.execute({ id: 'r', licensed: true })
+		expect(result.determinations[0]?.message).toBe('Note: none')
+		program.destroy()
+	})
+})
+
+describe('Program — missing information reads incomplete', () => {
+	const gate = createQualificationDefinition(
+		'q',
+		'Q',
+		[
+			createLogicalDefinition('gates', 'Gates', [
+				createRule('old', [createAtom('age', 'from', 18)], createAtom('old', 'equals', true)),
+			]),
+		],
+		{ rulings: [createRuling('young', 'gates', 'old', 'restriction')] },
+	)
+	const authority = createLogicalDefinition('authority', 'Authority', [
+		createRule(
+			'high',
+			[createAtom(['outcome', 'status'], 'equals', 'eligible')],
+			createAtom('reviewed', 'equals', true),
+		),
+	])
+
+	it('a rule that cannot read an input leaves no decision, and asks for the input', () => {
+		const program = createProgram(buildProgramDefinition('p', 'P', gate, undefined, { authority }))
+		const result = program.execute({ id: 'r' })
+		expect(result.status).toBe('incomplete')
+		expect(result.eligibility).toBe('referral')
+		expect(result.decision).toBeUndefined()
+		expect(result.success).toBe(false)
+		expect(result.faults.map((fault) => fault.path)).toEqual(['age'])
+		program.destroy()
+	})
+
+	it('no authority reads an incomplete outcome', () => {
+		const engine = createRecordingEngine()
+		const program = createProgram(
+			buildProgramDefinition('p', 'P', gate, undefined, { authority }),
+			{ engine },
+		)
+		program.execute({ id: 'r' })
+		expect(engine.calls.map((call) => call.definition.id)).not.toContain('authority')
+		program.destroy()
+		engine.destroy()
+	})
+
+	it('a later restriction still outranks what could not be read', () => {
+		const ruled = createQualificationDefinition(
+			'q',
+			'Q',
+			[
+				createLogicalDefinition('gates', 'Gates', [
+					createRule('old', [createAtom('age', 'from', 18)], createAtom('old', 'equals', true)),
+				]),
+				createLogicalDefinition('bans', 'Bans', [
+					createRule(
+						'banned',
+						[createAtom('banned', 'equals', true)],
+						createAtom('barred', 'equals', true),
+					),
+				]),
+			],
+			{ rulings: [createRuling('barred', 'bans', 'banned', 'restriction')] },
+		)
+		const program = createProgram(buildProgramDefinition('p', 'P', ruled))
+		const result = program.execute({ id: 'r', banned: true })
+		expect(result.status).toBe('ineligible')
+		expect(result.eligibility).toBe('ineligible')
+		program.destroy()
+	})
+
+	it('a line that cannot read an input reads incomplete, with eligibility referral', () => {
+		const rating = buildRatingDefinition('r', 'R', [
+			buildLineDefinition(
+				'line',
+				'Line',
+				createQuantitativeDefinition('line', 'Line', [
+					createFactorGroup('g', 'sum', [createFieldFactor('f', 'seats')]),
+				]),
+			),
+		])
+		const program = createProgram(
+			buildProgramDefinition('p', 'P', createQualificationDefinition('q', 'Q', []), rating),
+		)
+		const result = program.execute({ id: 'r' })
+		expect(result.status).toBe('incomplete')
+		expect(result.eligibility).toBe('referral')
+		expect(result.qualification.eligibility).toBe('eligible')
+		expect(result.faults.map((fault) => fault.path)).toEqual(['seats'])
+		program.destroy()
+	})
+
+	it('an authority that cannot read its outcome fails with no question to ask', () => {
+		const reads = createLogicalDefinition('authority', 'Authority', [
+			createRule(
+				'high',
+				[createAtom(['outcome', 'total'], 'above', 100)],
+				createAtom('reviewed', 'equals', true),
+			),
+		])
+		const program = createProgram(
+			buildProgramDefinition(
+				'p',
+				'P',
+				createQualificationDefinition('q', 'Q', [
+					createLogicalDefinition('gates', 'Gates', [
+						createRule('ok', [createAtom('id', 'equals', 'r')], createAtom('ok', 'equals', true)),
+					]),
+				]),
+				undefined,
+				{ authority: reads },
+			),
+		)
+		const result = program.execute({ id: 'r' })
+		expect(result.success).toBe(false)
+		expect(result.decision).toBeUndefined()
+		expect(result.faults).toEqual([])
+		expect(result.status).toBe('eligible')
+		expect(result.errors).toEqual(['Field "outcome.total" is missing'])
+		program.destroy()
+	})
+
+	it('a derived value a read cannot use fails rather than deciding', () => {
+		const typed = createQualificationDefinition('q', 'Q', [
+			createLogicalDefinition('gates', 'Gates', [
+				createRule(
+					'seed',
+					[createAtom('seed', 'equals', true)],
+					createAtom('score', 'equals', '30'),
+				),
+				createRule('ok', [createAtom('score', 'above', 18)], createAtom('ok', 'equals', true)),
+				createRule(
+					'done',
+					[createAtom('seed', 'equals', true)],
+					createAtom('done', 'equals', true),
+				),
+			]),
+		])
+		const program = createProgram(buildProgramDefinition('p', 'P', typed, undefined, { authority }))
+		const result = program.execute({ id: 'r', seed: true })
+		expect(result.success).toBe(false)
+		expect(result.decision).toBeUndefined()
+		program.destroy()
+	})
+})
+
+describe('Program — a batch and its door', () => {
+	const shape = objectShape({ id: stringShape(), amount: numberShape(), region: stringShape() })
+	const qualification = createQualificationDefinition('q', 'Q', [
+		createLogicalDefinition('gates', 'Gates', [
+			createRule(
+				'big',
+				[createAtom(['aggregate', 'count'], 'above', 0)],
+				createAtom('big', 'equals', true),
+			),
+		]),
+	])
+	const gates = createLogicalDefinition('batch-gates', 'Batch gates', [
+		createRule(
+			'over',
+			[createAtom(['aggregate', 'sums', 'amount'], 'above', 5)],
+			createAtom('over', 'equals', true),
+		),
+	])
+	const definition = buildProgramDefinition('b', 'B', qualification, undefined, {
+		shape,
+		aggregate: buildAggregateDefinition(['amount'], { partition: 'region', gates }),
+	})
+
+	it('reads each subject at the door before anything is summed', () => {
+		const program = createProgram(definition)
+		const result = program.execute([
+			{ id: 'a', amount: '3', region: 'n' },
+			{ id: 'b', amount: 4, region: 'n' },
+		])
+		expect(result.sums).toEqual({ amount: 7 })
+		expect(result.groups[0]?.sums).toEqual({ amount: 7 })
+		expect(result.success).toBe(true)
+		expect(result.repairs.map((fault) => fault.path)).toEqual([['amount']])
+		expect(result.determinations.map((entry) => entry.id)).toEqual(['over'])
+		program.destroy()
+	})
+
+	it('while one subject is refused, no subject reads the sums and no gate runs', () => {
+		const engine = createRecordingEngine()
+		const program = createProgram(definition, { engine })
+		const result = program.execute([
+			{ id: 'a', amount: 3, region: 'n' },
+			{ id: 'b', region: 'n' },
+		])
+		expect(result.success).toBe(false)
+		expect(result.subjects.map((entry) => entry.status)).toEqual(['referral', 'incomplete'])
+		expect(result.tallies.incomplete.count).toBe(1)
+		expect(result.sums).toEqual({ amount: 3 })
+		expect(result.determinations).toEqual([])
+		expect(result.faults).toEqual([{ reason: 'missing', path: ['amount'], expected: 'number' }])
+		expect(engine.calls.map((call) => call.definition.id)).not.toContain('batch-gates')
+		program.destroy()
+		engine.destroy()
+	})
+
+	it('runs nothing for a subject the door refused, and reads no notice from it', () => {
+		const engine = createRecordingEngine()
+		const program = createProgram(
+			buildProgramDefinition('n', 'N', standardProgramDefinition.qualification, undefined, {
+				shape: objectShape({ id: stringShape(), licensed: booleanShape() }),
+				notices: [buildNotice('note', 'Note: {{id}}')],
+			}),
+			{ engine },
+		)
+		const events = recordEvents(program)
+		const result = program.execute({ id: 'secret', licensed: true, stray: 1 })
+		expect(result.status).toBe('incomplete')
+		expect(result.eligibility).toBe('referral')
+		expect(result.success).toBe(false)
+		expect(result.determinations).toEqual([])
+		expect(result.faults).toEqual([{ reason: 'extra', path: ['stray'] }])
+		expect(events.names).toEqual(['qualify', 'execute'])
+		expect(engine.calls).toEqual([])
+		program.destroy()
+		engine.destroy()
+	})
+
+	it('a read of the aggregate projection is no question for anyone', () => {
+		const program = createProgram(buildProgramDefinition('b', 'B', qualification))
+		const result = program.execute({ id: 'a' })
+		expect(result.status).toBe('referral')
+		expect(result.success).toBe(false)
+		expect(result.faults).toEqual([])
+		program.destroy()
+	})
+})
+
+describe('Program — what validate refuses', () => {
+	const shape = objectShape({ id: stringShape(), amount: numberShape() })
+
+	it('refuses an authority over a qualification with no passes, and allows rating alone', () => {
+		const authority = createLogicalDefinition('a', 'A', [
+			createRule(
+				'r',
+				[createAtom(['outcome', 'status'], 'equals', 'eligible')],
+				createAtom('o', 'equals', true),
+			),
+		])
+		const empty = createQualificationDefinition('q', 'Q', [])
+		const decided = createProgram(
+			buildProgramDefinition('p', 'P', empty, undefined, { authority }),
+			{
+				validate: false,
+			},
+		)
+		expect(decided.validate().errors).toContain(
+			'An authority cannot decide: the qualification has no passes',
+		)
+		decided.destroy()
+		const rated = createProgram(
+			buildProgramDefinition('p', 'P', empty, standardProgramDefinition.rating),
+			{
+				validate: false,
+			},
+		)
+		expect(rated.validate().valid).toBe(true)
+		rated.destroy()
+	})
+
+	it.each<[string, ContractShape, string]>([
+		[
+			'absent',
+			objectShape({ amount: optionalShape(numberShape()) }),
+			'Aggregate field "amount" may be absent',
+		],
+		[
+			'null',
+			objectShape({ amount: nullableShape(numberShape()) }),
+			'Aggregate field "amount" may be null',
+		],
+		[
+			'null by a union',
+			objectShape({ amount: unionShape(numberShape(), nullShape()) }),
+			'Aggregate field "amount" may be null',
+		],
+		[
+			'not declared',
+			objectShape({}, { additionalProperties: true }),
+			'Aggregate field "amount" may be absent',
+		],
+	])('refuses an aggregate field that may be %s', (_name, shaped, message) => {
+		const program = createProgram(
+			buildProgramDefinition('p', 'P', createQualificationDefinition('q', 'Q', []), undefined, {
+				shape: shaped,
+				aggregate: buildAggregateDefinition(['amount']),
+			}),
+			{ validate: false },
+		)
+		expect(program.validate().errors).toContain(message)
+		program.destroy()
+	})
+
+	it('takes an aggregate field with a default, and refuses a partition that may be absent', () => {
+		const program = createProgram(
+			buildProgramDefinition('p', 'P', createQualificationDefinition('q', 'Q', []), undefined, {
+				shape: objectShape({
+					amount: optionalShape(numberShape(), { default: 0 }),
+					region: optionalShape(stringShape()),
+				}),
+				aggregate: buildAggregateDefinition(['amount'], { partition: 'region' }),
+			}),
+			{ validate: false },
+		)
+		expect(program.validate().errors).toEqual(['Aggregate field "region" may be absent'])
+		program.destroy()
+	})
+
+	it('refuses a shape on a qualification, a rating, or a line, because a program is the root', () => {
+		const line = buildLineDefinition(
+			'line',
+			'Line',
+			createQuantitativeDefinition(
+				'line',
+				'Line',
+				[createFactorGroup('g', 'sum', [createStaticFactor('s', 1)])],
+				{ shape },
+			),
+		)
+		const program = createProgram(
+			buildProgramDefinition(
+				'p',
+				'P',
+				createQualificationDefinition('q', 'Q', [], { shape }),
+				buildRatingDefinition('r', 'R', [line], { shape }),
+			),
+			{ validate: false },
+		)
+		const { errors } = program.validate()
+		expect(errors).toContain(
+			'Qualification may not carry a shape: a program reads its subject once, at its own door',
+		)
+		expect(errors).toContain(
+			'Rating may not carry a shape: a program reads its subject once, at its own door',
+		)
+		expect(errors).toContain(
+			'Line "line" may not carry a shape: a program reads its subject once, at its own door',
+		)
+		program.destroy()
+	})
+
+	it('reads what passes, lines, and notices read against the shape', () => {
+		const pass = createLogicalDefinition('gates', 'Gates', [
+			createRule('r', [createAtom('agee', 'above', 1)], createAtom('ok', 'equals', true)),
+		])
+		const line = buildLineDefinition(
+			'line',
+			'Line',
+			createQuantitativeDefinition('line', 'Line', [
+				createFactorGroup('g', 'sum', [createFieldFactor('f', 'seatz')]),
+			]),
+		)
+		const program = createProgram(
+			buildProgramDefinition(
+				'p',
+				'P',
+				createQualificationDefinition('q', 'Q', [pass]),
+				buildRatingDefinition('r', 'R', [line]),
+				{ shape, notices: [buildNotice('n', 'Hello {{nam}}')] },
+			),
+			{ validate: false },
+		)
+		const { errors } = program.validate()
+		expect(errors).toContain('Field "agee" is read, and the shape does not declare it')
+		expect(errors).toContain('Field "seatz" is read, and the shape does not declare it')
+		expect(errors).toContain('Notice "n" reads "nam", and the shape does not declare it')
+		program.destroy()
+	})
+
+	it('refuses a shape that cannot stand', () => {
+		const program = createProgram(
+			buildProgramDefinition('p', 'P', createQualificationDefinition('q', 'Q', []), undefined, {
+				shape: objectShape({ code: stringShape({ pattern: /x/ }) }),
+			}),
+			{ validate: false },
+		)
+		expect(program.validate().valid).toBe(false)
+		program.destroy()
+	})
+})
+
+describe('Program — published contracts', () => {
+	it('a result crosses as its projection: eligible, refused, and rated', () => {
+		const shape = objectShape({ id: stringShape(), licensed: booleanShape() })
+		const program = createProgram(
+			buildProgramDefinition(
+				'c',
+				'C',
+				standardProgramDefinition.qualification,
+				standardProgramDefinition.rating,
+				{ shape },
+			),
+		)
+		for (const subject of [
+			{ id: 'a', licensed: true },
+			{ id: 'a', licensed: 'true' },
+			{ id: 'a' },
+		]) {
+			expect(programResultContract.audit(projectProgramResult(program.execute(subject)))).toEqual(
+				[],
+			)
+		}
+		const batch = program.execute([{ id: 'a', licensed: true }, { id: 'b' }])
+		expect(aggregateResultContract.audit(projectAggregateResult(batch))).toEqual([])
+		program.destroy()
+	})
+
+	it('a result with limits, premises, and a decision crosses', () => {
+		const program = createProgram(
+			buildProgramDefinition(
+				'authority-conditional',
+				'Authority conditional',
+				conditionalProgramDefinition.qualification,
+				conditionalProgramDefinition.rating,
+				{ authority: conditionalAuthority },
+			),
+		)
+		const result = program.execute(conditionalSubject)
+		expect(result.determinations.length).toBeGreaterThan(0)
+		expect(programResultContract.audit(projectProgramResult(result))).toEqual([])
+		program.destroy()
+	})
+
+	it('what the definition contract admits the guard admits, setting a nested shape aside', () => {
+		const contract = createProgramDefinitionContract()
+		expect(contract.is(standardProgramDefinition)).toBe(true)
+		expect(isProgramDefinition(standardProgramDefinition)).toBe(true)
+		expect(contract.is({ ...standardProgramDefinition, extra: 1 })).toBe(false)
+		expect(isProgramDefinition({ ...standardProgramDefinition, extra: 1 })).toBe(false)
+	})
+
+	it('names the gap: is admits a malformed nested shape, and the guard refuses it', () => {
+		const contract = createProgramDefinitionContract()
+		for (const shape of [42, null, {}, { type: 'nonsense' }]) {
+			expect(contract.is({ ...standardProgramDefinition, shape })).toBe(true)
+			expect(isProgramDefinition({ ...standardProgramDefinition, shape })).toBe(false)
+		}
 	})
 })

@@ -1,4 +1,4 @@
-import type { FieldPath, JSONValue } from '@orkestrel/contract'
+import type { AuditFault, ContractShape, FieldPath, JSONValue } from '@orkestrel/contract'
 import type { EmitterErrorHandler, EmitterHooks, EmitterInterface } from '@orkestrel/emitter'
 import type {
 	Eligibility,
@@ -9,6 +9,7 @@ import type {
 } from '@orkestrel/qualifier'
 import type { RatingDefinition, RatingResult, RaterInterface } from '@orkestrel/rater'
 import type {
+	CheckState,
 	LogicalDefinition,
 	ReasonInterface,
 	ReasonValidationResult,
@@ -19,7 +20,14 @@ import type { STATUSES } from './constants.js'
 /** Identifies a final authority outcome, derived from global eligibility. */
 export type Decision = 'approved' | 'denied' | 'submitted'
 
-/** Identifies the presentation and tally status derived from eligibility, conditions, and rating success. */
+/**
+ * Identifies the presentation and tally status derived from eligibility, conditions, and rating success.
+ *
+ * @remarks
+ * `incomplete` means an input the answer needs is missing or unreadable: the door refused the
+ * subject, or a rule or a factor could not read one. It carries eligibility `referral` and no
+ * decision, and `faults` names what to ask for. `referral` stays what a rule refers.
+ */
 export type Status = (typeof STATUSES)[number]
 
 /** Identifies a post-qualification program determination effect. */
@@ -65,7 +73,8 @@ export interface AggregateInput {
  * `description` — a free-text summary. `notices` — authored unconditional
  * notices. `authority` — a logical definition evaluated per subject to derive
  * limit determinations and the decision. `aggregate` — batch aggregate fields,
- * partition field, and gates. `metadata` — opaque caller data, copied fresh.
+ * partition field, and gates. `metadata` — opaque caller data, copied fresh. `shape` —
+ * the subject's shape, read at the door before anything else reads the subject.
  */
 export interface ProgramInput {
 	readonly description?: string
@@ -73,6 +82,7 @@ export interface ProgramInput {
 	readonly authority?: LogicalDefinition
 	readonly aggregate?: AggregateDefinition
 	readonly metadata?: JSONValue
+	readonly shape?: ContractShape
 }
 
 /** Describes an authored, unconditional program notice. */
@@ -82,11 +92,17 @@ export interface Notice {
 	readonly scope?: string
 }
 
-/** Describes one resolved notice or authority-limit outcome. */
+/**
+ * Describes one resolved notice or authority-limit outcome.
+ *
+ * @remarks
+ * `state` is `met` for a notice and for a limit that fired. A limit that did not fire produces no
+ * determination.
+ */
 export interface Determination {
 	readonly id: string
 	readonly effect: ProgramEffect
-	readonly applied: boolean
+	readonly state: CheckState
 	readonly scope?: string
 	readonly message?: string
 	readonly premises: readonly Premise[]
@@ -127,7 +143,10 @@ export interface Tally {
  * over the lines scoped eligibility left standing, through `@orkestrel/rater`.
  * `authority` (a logical definition) runs last, over the assembled result
  * extended with an outcome projection, to derive limit determinations and the
- * final decision. An omitted `rating` authors an eligibility-only program — the
+ * final decision. `shape` is the subject's shape, and a program is its one root: a batch reads
+ * it per subject before anything is summed, and `qualification` and `rating` carry none of their
+ * own. `authority` and an aggregate's `gates` keep theirs, because they read a projection. An
+ * omitted `rating` authors an eligibility-only program — the
  * rater is never invoked, an eligible subject resolves to `'eligible'` (or
  * `'conditional'` under an applied condition or scoped restriction), status is
  * never `'unrated'`, and decisions remain reachable through `authority`. Program
@@ -148,9 +167,18 @@ export interface ProgramDefinition {
 	readonly authority?: LogicalDefinition
 	readonly aggregate?: AggregateDefinition
 	readonly metadata?: JSONValue
+	readonly shape?: ContractShape
 }
 
-/** Describes one subject's complete program outcome. */
+/**
+ * Describes one subject's complete program outcome.
+ *
+ * @remarks
+ * `faults` names the inputs a question can be asked about, from the door, the qualification, and
+ * the rating. A read of the `aggregate` projection is no input and stays in `errors`, and so does
+ * anything an authority could not read. `repairs` and `defaulted` are what the doors accepted and
+ * filled. `success` is the verdict, and `errors` says why it is false.
+ */
 export interface ProgramResult {
 	readonly id: string
 	readonly name: string
@@ -171,9 +199,20 @@ export interface ProgramResult {
 	readonly success: boolean
 	readonly trace: readonly string[]
 	readonly errors: readonly string[]
+	readonly faults: readonly AuditFault[]
+	readonly repairs: readonly AuditFault[]
+	readonly defaulted: readonly FieldPath[]
 }
 
-/** Describes a batch program outcome across every subject. */
+/**
+ * Describes a batch program outcome across every subject.
+ *
+ * @remarks
+ * `faults`, `repairs`, and `defaulted` gather every subject's, each once by path, and each
+ * subject keeps its own. `sums` and `groups` read only subjects the door admitted. While any
+ * subject is refused the sums are not the batch's, so no subject reads the `aggregate` projection
+ * and no gate runs.
+ */
 export interface AggregateResult {
 	readonly id: string
 	readonly name: string
@@ -186,6 +225,9 @@ export interface AggregateResult {
 	readonly success: boolean
 	readonly trace: readonly string[]
 	readonly errors: readonly string[]
+	readonly faults: readonly AuditFault[]
+	readonly repairs: readonly AuditFault[]
+	readonly defaulted: readonly FieldPath[]
 }
 
 /**

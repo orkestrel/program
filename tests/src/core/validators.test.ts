@@ -236,7 +236,7 @@ describe('validators', () => {
 			const determination = {
 				id: 'audit',
 				effect: 'notice',
-				applied: true,
+				state: 'met',
 				premises: [],
 				extra: true,
 			}
@@ -250,15 +250,15 @@ describe('validators', () => {
 			const determination = {
 				id: 'audit',
 				effect: 'notice',
-				applied: true,
+				state: 'met',
 				premises: [],
 			}
 			expect(isDetermination({ ...determination, id: 1 })).toBe(false)
 			expect(isDetermination({ ...determination, effect: 'condition' })).toBe(false)
-			expect(isDetermination({ ...determination, applied: 'yes' })).toBe(false)
+			expect(isDetermination({ ...determination, state: 'yes' })).toBe(false)
 			expect(isDetermination({ ...determination, scope: 1 })).toBe(false)
 			expect(isDetermination({ ...determination, message: 1 })).toBe(false)
-			expect(isDetermination({ ...determination, premises: [{ met: 'yes' }] })).toBe(false)
+			expect(isDetermination({ ...determination, premises: [{ state: 'yes' }] })).toBe(false)
 			expect(isDetermination([])).toBe(false)
 		})
 
@@ -321,7 +321,7 @@ describe('validators', () => {
 			expect(isTally({ ...tally, sums: { premium: '100' } })).toBe(false)
 			expect(isTally([])).toBe(false)
 			expect(isTally({ key: 'east', count: 1, sums: {} })).toBe(true)
-			expect(isTally({ id: 'audit', effect: 'notice', applied: true, premises: [] })).toBe(false)
+			expect(isTally({ id: 'audit', effect: 'notice', state: 'met', premises: [] })).toBe(false)
 		})
 
 		it('refuses every hostile value without throwing', () => {

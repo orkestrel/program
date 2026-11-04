@@ -1,4 +1,4 @@
-import type { FieldPath } from '@orkestrel/contract'
+import type { AuditFault, ContractShape, FieldPath, JSONValue } from '@orkestrel/contract'
 import type {
 	Eligibility,
 	QualificationDefinition,
@@ -7,12 +7,13 @@ import type {
 } from '@orkestrel/qualifier'
 import type { LineDefinition, RatingDefinition, RatingResult } from '@orkestrel/rater'
 import type {
-	EvaluatorInterface,
 	LogicalDefinition,
 	LogicalResult,
 	ReasonInterface,
 	ReasonValidationResult,
+	ShapeScan,
 	Subject,
+	SubjectAdmission,
 } from '@orkestrel/reason'
 import type {
 	AggregateDefinition,
@@ -30,10 +31,34 @@ import type {
 	Status,
 	Tally,
 } from './types.js'
-import { isFiniteNumber, isRecord, resolveField } from '@orkestrel/contract'
-import { findRule, interpolateMessage, ruleToPremises } from '@orkestrel/qualifier'
-import { findDuplicates, formatField, isReasonValidationResult } from '@orkestrel/reason'
-import { AGGREGATE_KEY, ELIGIBILITY_DECISIONS, OUTCOME_KEY, STATUSES } from './constants.js'
+import { isFiniteNumber, isRecord, isString, resolveField } from '@orkestrel/contract'
+import {
+	findMessageTokens,
+	findRule,
+	interpolateMessage,
+	projectQualificationResult,
+	ruleToPremises,
+	scanDefinitionShape,
+} from '@orkestrel/qualifier'
+import { projectRatingResult } from '@orkestrel/rater'
+import {
+	filterUniqueFaults,
+	filterUniqueFields,
+	findDuplicates,
+	findFieldShape,
+	formatField,
+	isReasonValidationResult,
+	projectValue,
+	scanShape,
+	scanShapeReads,
+} from '@orkestrel/reason'
+import {
+	AGGREGATE_KEY,
+	ELIGIBILITY_DECISIONS,
+	OUTCOME_KEY,
+	STATUSES,
+	UNSUMMED_CATEGORIES,
+} from './constants.js'
 import { ProgramError } from './errors.js'
 import { isProgramDefinition } from './validators.js'
 
@@ -123,7 +148,8 @@ export function selectProgramLines(
  *
  * @remarks
  * Explicit policy, not an opaque precedence reduce: global
- * ineligibility or referral is terminal; a scoped referral yields `referral`;
+ * ineligibility is terminal; a fault on an input the answer needs yields `incomplete`;
+ * global referral is terminal; a scoped referral yields `referral`;
  * an applied `condition` or an applied scoped `restriction` (a line was
  * removed but others rated) is `conditional`. When the definition omits
  * `rating` the program is eligibility-only — status resolves to `conditional`
@@ -148,11 +174,13 @@ export function deriveStatus(
 	rating?: RatingResult,
 ): Status {
 	if (qualification.eligibility === 'ineligible') return 'ineligible'
+	const faults = [...qualification.faults, ...(rating?.faults ?? [])]
+	if (faults.some((fault) => isInputFault(fault))) return 'incomplete'
 	if (qualification.eligibility === 'referral') return 'referral'
 	if (Object.values(qualification.scopes).includes('referral')) return 'referral'
 	const conditional = qualification.findings.some(
 		(finding) =>
-			finding.applied &&
+			finding.state === 'met' &&
 			(finding.effect === 'condition' ||
 				(finding.scope !== undefined && finding.effect === 'restriction')),
 	)
@@ -206,7 +234,7 @@ export function buildNoticeDeterminations(
 	return notices.map((notice) => ({
 		id: notice.id,
 		effect: 'notice',
-		applied: true,
+		state: 'met',
 		...(notice.scope === undefined ? {} : { scope: notice.scope }),
 		message: interpolateMessage(notice.message, subject),
 		premises: [],
@@ -228,7 +256,6 @@ export function buildNoticeDeterminations(
  * @param definition - The authority or aggregate-gate logical definition
  * @param result - The evaluated logical result
  * @param working - The working record the definition ran against
- * @param evaluator - The shared reason check evaluator
  * @param labels - Optional field-to-label overrides, keyed by dot-joined field
  * @returns A fresh list of `limit` determinations
  *
@@ -236,29 +263,28 @@ export function buildNoticeDeterminations(
  * ```ts
  * import { buildLimitDeterminations } from '@orkestrel/program'
  *
- * buildLimitDeterminations(authority, resolved, outcome, evaluator)
+ * buildLimitDeterminations(authority, resolved, outcome)
  * ```
  */
 export function buildLimitDeterminations(
 	definition: LogicalDefinition,
 	result: LogicalResult,
 	working: Readonly<Record<string, unknown>>,
-	evaluator: EvaluatorInterface,
 	labels?: Readonly<Record<string, string>>,
 ): readonly Determination[] {
 	const output: Determination[] = []
 	for (const entry of result.rules) {
-		if (!entry.applied) continue
+		if (entry.state !== 'met') continue
 		const rule = findRule(definition, entry.id)
 		if (rule === undefined) continue
 		output.push({
 			id: entry.id,
 			effect: 'limit',
-			applied: true,
+			state: 'met',
 			...(rule.description === undefined
 				? {}
 				: { message: interpolateMessage(rule.description, working) }),
-			premises: ruleToPremises(rule, working, evaluator, labels),
+			premises: ruleToPremises(rule, entry, labels),
 		})
 	}
 	return output
@@ -299,11 +325,13 @@ export function buildOutcomeProjection(result: ProgramResult): Readonly<Record<s
  * determination parts — before or after authority.
  *
  * @remarks
- * `eligibility` mirrors the qualification. `success` is execution integrity: the
+ * `eligibility` mirrors the qualification, except that `incomplete` reads `referral` whatever
+ * the rating refused on. `success` is execution integrity: the
  * qualification succeeded, rating (when it ran) succeeded, and authority (when it
  * ran) produced no errors — a valid ineligible or referral outcome still
- * succeeds. `trace` and `errors` accumulate the qualification's, every rated
- * line's worksheet trail, and the authority's. A `decision` is present only when
+ * succeeds. `trace` and `errors` accumulate the qualification's, the rating's, and the
+ * authority's. `faults` names the inputs a question can be asked about, and `repairs` and
+ * `defaulted` gather what every door accepted and filled. A `decision` is present only when
  * an authority ran (`options.authority`), the execution succeeded (`success`),
  * no `limit` determination applied, and status is not `unrated`.
  *
@@ -312,7 +340,8 @@ export function buildOutcomeProjection(result: ProgramResult): Readonly<Record<s
  * @param rating - The subject's rating result, when rating occurred
  * @param determinations - The program-scoped determinations (notices, then limits)
  * @param status - The already-derived status
- * @param options - Optional authority result driving the decision projection
+ * @param options - Optional authority result driving the decision projection, and what the
+ * program's own door admitted
  * @returns A fresh program result
  *
  * @example
@@ -328,22 +357,22 @@ export function buildProgramResult(
 	rating: RatingResult | undefined,
 	determinations: readonly Determination[],
 	status: Status,
-	options?: { readonly authority?: LogicalResult },
+	options?: { readonly authority?: LogicalResult; readonly admission?: SubjectAdmission },
 ): ProgramResult {
 	const authority = options?.authority
 	const ratingTrace =
 		rating === undefined ? [] : rating.lines.flatMap((line) => line.worksheet.trace)
-	const ratingErrors =
-		rating === undefined ? [] : rating.lines.flatMap((line) => line.worksheet.errors)
 	const authorityTrace = authority === undefined ? [] : [...authority.trace]
 	const authorityErrors = authority === undefined ? [] : [...authority.errors]
 	const trace = [...qualification.trace, ...ratingTrace, ...authorityTrace]
-	const errors = [...qualification.errors, ...ratingErrors, ...authorityErrors]
+	const said = [...qualification.errors, ...(rating?.errors ?? []), ...authorityErrors]
 	const success =
 		qualification.success &&
 		(rating === undefined || rating.success) &&
 		authorityErrors.length === 0
-	const limited = determinations.some((entry) => entry.effect === 'limit' && entry.applied)
+	// `success` is the verdict, so a borrowed engine that failed and said nothing still has to say so.
+	const errors = !success && said.length === 0 ? ['The program failed and said nothing'] : said
+	const limited = determinations.some((entry) => entry.effect === 'limit' && entry.state === 'met')
 	const decision =
 		authority !== undefined && success && !limited && status !== 'unrated'
 			? decideEligibility(qualification.eligibility)
@@ -351,7 +380,7 @@ export function buildProgramResult(
 	return {
 		id: definition.id,
 		name: definition.name,
-		eligibility: qualification.eligibility,
+		eligibility: status === 'incomplete' ? 'referral' : qualification.eligibility,
 		status,
 		...(decision === undefined ? {} : { decision }),
 		qualification,
@@ -360,7 +389,266 @@ export function buildProgramResult(
 		success,
 		trace,
 		errors,
+		faults: filterUniqueFaults(
+			[...qualification.faults, ...(rating?.faults ?? [])].filter((fault) => isInputFault(fault)),
+		),
+		repairs: filterUniqueFaults([
+			...(options?.admission?.repairs ?? []),
+			...qualification.repairs,
+			...(rating?.repairs ?? []),
+		]),
+		defaulted: filterUniqueFields([
+			...(options?.admission?.defaulted ?? []),
+			...qualification.defaulted,
+			...(rating?.defaulted ?? []),
+		]),
 	}
+}
+
+/**
+ * Determines whether a fault names an input a question can be asked about.
+ *
+ * @remarks
+ * A read of the `aggregate` projection is the program's own, so no one can answer it. It stays an
+ * error.
+ *
+ * @param fault - The fault
+ * @returns True if the fault names an input
+ *
+ * @example
+ * ```ts
+ * import { isInputFault } from '@orkestrel/program'
+ *
+ * isInputFault({ reason: 'missing', path: 'age', expected: 'number' }) // true
+ * isInputFault({ reason: 'missing', path: ['aggregate', 'count'], expected: 'number' }) // false
+ * ```
+ */
+export function isInputFault(fault: AuditFault): boolean {
+	const key = isString(fault.path) ? fault.path : fault.path[0]
+	return key !== AGGREGATE_KEY
+}
+
+/**
+ * Builds the qualification a subject refused at the program's door stands in for.
+ *
+ * @remarks
+ * Nothing qualified, so it reads `referral` with nothing found, and carries the door's refusal.
+ *
+ * @param definition - The authored qualification definition
+ * @param admission - What the door said
+ * @returns A fresh qualification result
+ *
+ * @example
+ * ```ts
+ * import { buildRefusedQualification } from '@orkestrel/program'
+ *
+ * buildRefusedQualification(definition.qualification, admission).eligibility // 'referral'
+ * ```
+ */
+export function buildRefusedQualification(
+	definition: QualificationDefinition,
+	admission: SubjectAdmission,
+): QualificationResult {
+	return {
+		id: definition.id,
+		name: definition.name,
+		eligibility: 'referral',
+		scopes: {},
+		findings: [],
+		derivations: [],
+		success: false,
+		trace: [],
+		errors: admission.errors,
+		faults: admission.faults,
+		repairs: [],
+		defaulted: [],
+	}
+}
+
+/**
+ * Reads what a shape says about an aggregate field or the partition.
+ *
+ * @remarks
+ * A sum skips a field that is absent or `null`, and a partition pools it into `''`, so a shape
+ * that admits either with no default would let a batch answer without it. A `json` or `raw` shape
+ * admits `null`, and a path past a value's own shape may be absent.
+ *
+ * @param shape - The program's shape
+ * @param field - The aggregate field or partition
+ * @returns The problem, or `undefined` when the field always holds a value
+ *
+ * @example
+ * ```ts
+ * import { numberShape, objectShape, optionalShape } from '@orkestrel/contract'
+ * import { findAggregateGap } from '@orkestrel/program'
+ *
+ * const shape = objectShape({ a: numberShape(), b: optionalShape(numberShape()) })
+ * findAggregateGap(shape, 'a') // undefined
+ * findAggregateGap(shape, 'b') // 'may be absent'
+ * ```
+ */
+export function findAggregateGap(shape: ContractShape, field: FieldPath): string | undefined {
+	const [key, ...rest] = isString(field) ? [field] : field
+	switch (shape.category) {
+		case 'optional':
+			return shape.default === undefined ? 'may be absent' : findAggregateGap(shape.inner, field)
+		case 'nullable':
+		case 'null':
+		case 'json':
+		case 'raw':
+			return 'may be null'
+		case 'union':
+			return shape.variants.some((variant) => findAggregateGap(variant, []) === 'may be null')
+				? 'may be null'
+				: undefined
+		case 'object': {
+			if (key === undefined) return undefined
+			const property = Object.hasOwn(shape.properties, key) ? shape.properties[key] : undefined
+			return property === undefined ? 'may be absent' : findAggregateGap(property, rest)
+		}
+		default:
+			return key === undefined ? undefined : 'may be absent'
+	}
+}
+
+/**
+ * Describes what is wrong with a program's shape, against the program itself.
+ *
+ * @remarks
+ * A program is its one root, so its qualification, rating, and lines carry no shape of their own.
+ * Every field a pass, a line, or a notice reads has to be declared, and an aggregate field or the
+ * partition always has to hold a value.
+ *
+ * @param definition - The program definition
+ * @returns The errors and warnings found, empty when there is no shape to read
+ *
+ * @example
+ * ```ts
+ * import { scanProgramShape } from '@orkestrel/program'
+ *
+ * scanProgramShape(definition) // { errors: [], warnings: [] }
+ * ```
+ */
+export function scanProgramShape(definition: ProgramDefinition): ShapeScan {
+	const nested = [
+		...(definition.qualification.shape === undefined
+			? []
+			: ['Qualification may not carry a shape: a program reads its subject once, at its own door']),
+		...(definition.rating?.shape === undefined
+			? []
+			: ['Rating may not carry a shape: a program reads its subject once, at its own door']),
+		...(definition.rating?.lines ?? []).flatMap((line) =>
+			line.rate.shape === undefined
+				? []
+				: [
+						`Line "${line.id}" may not carry a shape: a program reads its subject once, at its own door`,
+					],
+		),
+	]
+	const { shape } = definition
+	if (shape === undefined) return { errors: nested, warnings: [] }
+	// A read of the aggregate projection is the program's own, so no shape of the subject holds it.
+	const passes = scanDefinitionShape({ ...definition.qualification, shape }, [AGGREGATE_KEY])
+	const lines = definition.rating?.lines ?? []
+	const factors = lines.flatMap((line) => line.rate.groups.flatMap((group) => group.factors))
+	const reads = scanShapeReads(
+		shape,
+		factors.flatMap((factor) => factor.checks ?? []),
+		factors.flatMap((factor) => (factor.source.origin === 'static' ? [] : [factor.source.field])),
+		new Set(),
+	)
+	const tokens = (definition.notices ?? []).flatMap((notice) =>
+		findMessageTokens(notice.message).flatMap((token) =>
+			findFieldShape(shape, token.split('.')).declared
+				? []
+				: [`Notice "${notice.id}" reads "${token}", and the shape does not declare it`],
+		),
+	)
+	const aggregate = definition.aggregate
+	const held = [
+		...(aggregate?.fields ?? []),
+		...(aggregate?.partition === undefined ? [] : [aggregate.partition]),
+	]
+	const gaps = held.flatMap((field) => {
+		const gap = findAggregateGap(shape, field)
+		return gap === undefined ? [] : [`Aggregate field "${formatField(field)}" ${gap}`]
+	})
+	// A sum counts only finite numbers, so a field no number can fill would sum to zero.
+	const unsummed = (aggregate?.fields ?? []).flatMap((field) => {
+		const category = findFieldShape(shape, field).shape?.category
+		return category === undefined || !UNSUMMED_CATEGORIES.includes(category)
+			? []
+			: [`Aggregate field "${formatField(field)}" holds no number`]
+	})
+	return {
+		errors: [
+			...nested,
+			...scanShape(shape),
+			...passes.errors,
+			...reads.errors,
+			...tokens,
+			...gaps,
+			...unsummed,
+		],
+		warnings: [...passes.warnings, ...reads.warnings],
+	}
+}
+
+/**
+ * Projects a result to the JSON its contract reads.
+ *
+ * @remarks
+ * A rating holds `NaN` by design and a premise holds whatever a subject held, so a result crosses a
+ * boundary as this projection: non-finite as `null`, `undefined` omitted.
+ *
+ * @param result - The program result
+ * @returns Its JSON projection, which `programResultContract` admits
+ *
+ * @example
+ * ```ts
+ * import { programResultContract, projectProgramResult } from '@orkestrel/program'
+ *
+ * programResultContract.is(projectProgramResult(program.execute(subject))) // true
+ * ```
+ */
+export function projectProgramResult(result: ProgramResult): JSONValue | undefined {
+	return projectValue(
+		{
+			...result,
+			qualification: projectQualificationResult(result.qualification),
+			...(result.rating === undefined ? {} : { rating: projectRatingResult(result.rating) }),
+			determinations: result.determinations.map((entry) => ({
+				...entry,
+				premises: entry.premises.map((premise) => ({
+					...premise,
+					...(premise.actual === undefined ? {} : { actual: projectValue(premise.actual) }),
+				})),
+			})),
+		},
+		new Set(),
+		{ left: Number.POSITIVE_INFINITY },
+	)
+}
+
+/**
+ * Projects a batch result to the JSON its contract reads.
+ *
+ * @param result - The aggregate result
+ * @returns Its JSON projection, which `aggregateResultContract` admits
+ *
+ * @example
+ * ```ts
+ * import { aggregateResultContract, projectAggregateResult } from '@orkestrel/program'
+ *
+ * aggregateResultContract.is(projectAggregateResult(program.execute([subject]))) // true
+ * ```
+ */
+export function projectAggregateResult(result: AggregateResult): JSONValue | undefined {
+	return projectValue(
+		{ ...result, subjects: result.subjects.map((entry) => projectProgramResult(entry)) },
+		new Set(),
+		{ left: Number.POSITIVE_INFINITY },
+	)
 }
 
 /**
@@ -524,6 +812,15 @@ export function validateProgramDefinition(
 
 	if (definition.id.length === 0) errors.push('Program id must not be empty')
 	if (definition.name.length === 0) errors.push('Program name must not be empty')
+
+	const shaped = scanProgramShape(definition)
+	errors.push(...shaped.errors)
+	warnings.push(...shaped.warnings)
+
+	// An authority decides on what qualification found, and with no passes it found nothing.
+	if (definition.authority !== undefined && definition.qualification.passes.length === 0) {
+		errors.push('An authority cannot decide: the qualification has no passes')
+	}
 
 	const qualification = qualifier.validate(definition.qualification)
 	if (isReasonValidationResult(qualification)) {
@@ -828,6 +1125,7 @@ export function completeTallies(
 	return {
 		ineligible: entries.ineligible ?? { count: 0, sums: {} },
 		referral: entries.referral ?? { count: 0, sums: {} },
+		incomplete: entries.incomplete ?? { count: 0, sums: {} },
 		conditional: entries.conditional ?? { count: 0, sums: {} },
 		unrated: entries.unrated ?? { count: 0, sums: {} },
 		eligible: entries.eligible ?? { count: 0, sums: {} },
@@ -900,7 +1198,7 @@ export function tallySubject(
  * @param tallies - The completed status tallies
  * @param sums - The whole-batch summed aggregate fields
  * @param options - Optional resolved aggregate-gate result
- * @returns A fresh aggregate result
+ * @returns A fresh aggregate result, with each subject's faults, repairs, and fills gathered once
  *
  * @example
  * ```ts
@@ -933,6 +1231,9 @@ export function buildAggregateResult(
 		success: subjects.every((entry) => entry.success) && gateErrors.length === 0,
 		trace: [...subjects.flatMap((entry) => entry.trace), ...gateTrace],
 		errors: [...subjects.flatMap((entry) => entry.errors), ...gateErrors],
+		faults: filterUniqueFaults(subjects.flatMap((entry) => entry.faults)),
+		repairs: filterUniqueFaults(subjects.flatMap((entry) => entry.repairs)),
+		defaulted: filterUniqueFields(subjects.flatMap((entry) => entry.defaulted)),
 	}
 }
 
@@ -977,6 +1278,7 @@ export function buildProgramDefinition(
 		...(input?.authority === undefined ? {} : { authority: input.authority }),
 		...(input?.aggregate === undefined ? {} : { aggregate: input.aggregate }),
 		...(input?.metadata === undefined ? {} : { metadata: structuredClone(input.metadata) }),
+		...(input?.shape === undefined ? {} : { shape: input.shape }),
 	}
 }
 

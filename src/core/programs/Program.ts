@@ -2,11 +2,13 @@ import type { EmitterInterface } from '@orkestrel/emitter'
 import type { QualificationResult, QualifierInterface } from '@orkestrel/qualifier'
 import type { RaterInterface, RatingResult } from '@orkestrel/rater'
 import type {
-	EvaluatorInterface,
+	LogicalDefinition,
 	LogicalResult,
 	ReasonInterface,
+	ReasonResult,
 	ReasonValidationResult,
 	Subject,
+	SubjectAdmission,
 } from '@orkestrel/reason'
 import type {
 	AggregateGroup,
@@ -26,11 +28,12 @@ import { attempt, isArray, isObject } from '@orkestrel/contract'
 import { createQualifier, isQualificationResult } from '@orkestrel/qualifier'
 import { createRater, isRatingResult } from '@orkestrel/rater'
 import {
-	createEvaluator,
 	createLogicalReasoner,
 	createQuantitativeReasoner,
 	createReason,
+	createSubjectDoor,
 	isLogicalResult,
+	isReasonError,
 } from '@orkestrel/reason'
 import { DEFAULT_PROGRAM_VALIDATE, OUTCOME_KEY } from '../constants.js'
 import { ProgramError } from '../errors.js'
@@ -48,6 +51,7 @@ import {
 	buildOutcomeProjection,
 	buildProgramResult,
 	buildQualificationSubject,
+	buildRefusedQualification,
 	deriveStatus,
 	selectProgramLines,
 	tallySubject,
@@ -59,10 +63,12 @@ import {
  * authored definition and executing single subjects or aggregate-aware batches.
  *
  * @remarks
- * Qualification decides whether rating happens: a globally ineligible, referred,
+ * A definition's `shape` is read at the door first: a subject it refuses reads `incomplete` and
+ * runs nothing, and a batch reads it per subject before anything is summed. Qualification decides
+ * whether rating happens: a globally ineligible, referred,
  * or failed subject never reaches the rater, and a scoped ineligibility removes
- * only its line before the first rating call. The rater always receives the
- * original subject; the qualifier's aggregate projection stays private. When no
+ * only its line before the first rating call. The rater always receives what the door
+ * admitted; the qualifier's aggregate projection stays private. When no
  * qualifier, rater, or engine is injected the program creates one shared
  * quantitative-plus-logical engine, injects it into the qualifier and rater it
  * creates, and destroys only what it owns. A definition failure during
@@ -82,7 +88,7 @@ export class Program implements ProgramInterface {
 	readonly #qualifier: QualifierInterface
 	readonly #rater: RaterInterface
 	readonly #engine: ReasonInterface
-	readonly #evaluator: EvaluatorInterface
+	readonly #door = createSubjectDoor()
 	readonly #qualifierOwned: boolean
 	readonly #raterOwned: boolean
 	readonly #engineOwned: boolean
@@ -139,7 +145,7 @@ export class Program implements ProgramInterface {
 			...(options?.on === undefined ? {} : { on: options.on }),
 			...(options?.error === undefined ? {} : { error: options.error }),
 		})
-		this.#evaluator = createEvaluator()
+		this.#validate = options?.validate ?? DEFAULT_PROGRAM_VALIDATE
 		this.#engineOwned = options?.engine === undefined
 		this.#qualifierOwned = options?.qualifier === undefined
 		this.#raterOwned = options?.rater === undefined
@@ -148,10 +154,11 @@ export class Program implements ProgramInterface {
 			createReason({
 				reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
 				bail: false,
+				validate: this.#validate,
 			})
-		this.#qualifier = options?.qualifier ?? createQualifier({ engine: this.#engine })
+		this.#qualifier =
+			options?.qualifier ?? createQualifier({ engine: this.#engine, validate: this.#validate })
 		this.#rater = options?.rater ?? createRater({ engine: this.#engine })
-		this.#validate = options?.validate ?? DEFAULT_PROGRAM_VALIDATE
 		this.#labels = options?.labels
 
 		if (this.#validate) {
@@ -188,10 +195,11 @@ export class Program implements ProgramInterface {
 	 *
 	 * @remarks
 	 * Every subject is asserted before any work runs, so a reserved key in the last
-	 * subject rejects the batch before the first one qualifies. The batch sums,
-	 * partitions, and per-subject aggregate projections are computed next, each
-	 * subject executes in input order, every result tallies by status, and optional
-	 * aggregate gates run last against the batch aggregate record.
+	 * subject rejects the batch before the first one qualifies. Each is then read at the door. The
+	 * batch sums, partitions, and per-subject aggregate projections are computed from what it
+	 * admitted, each subject executes in input order, every result tallies by status, and optional
+	 * aggregate gates run last against the batch aggregate record. While any subject is refused the
+	 * sums are not the batch's, so no subject reads the projection and no gate runs.
 	 *
 	 * @param subjects - The subjects to execute, in input order
 	 * @returns A fresh aggregate result carrying every subject result, the batch
@@ -218,11 +226,13 @@ export class Program implements ProgramInterface {
 	 * Executes one subject through the composed qualify-rate-determine workflow.
 	 *
 	 * @remarks
+	 * The door reads the subject first, and one it refuses reads `incomplete` and runs nothing.
 	 * Qualification decides whether rating happens: a globally ineligible, referred,
 	 * or failed subject never reaches the rater, and a scoped ineligibility removes
-	 * only its line before the first rating call. The rater always receives the
-	 * original subject. Notices, status, optional authority, and the optional
-	 * decision follow, in that order.
+	 * only its line before the first rating call. The rater always receives what the door
+	 * admitted. Notices, status, optional authority, and the optional
+	 * decision follow, in that order. No authority reads an `incomplete` outcome, because it holds
+	 * no answer to read.
 	 *
 	 * @param subject - The subject to execute
 	 * @returns A fresh program result carrying the nested qualification and rating
@@ -248,7 +258,8 @@ export class Program implements ProgramInterface {
 	execute(input: Subject | readonly Subject[]): ProgramResult | AggregateResult {
 		this.#alive()
 		if (isArray<Subject>(input)) return this.#aggregate(input)
-		return this.#subject(input)
+		assertProgramSubject(input)
+		return this.#subject(this.#door.admit(input, this.definition.shape))
 	}
 
 	/**
@@ -307,9 +318,19 @@ export class Program implements ProgramInterface {
 		this.#emitter.destroy()
 	}
 
-	#subject(subject: Subject, aggregate?: AggregateProjection): ProgramResult {
-		assertProgramSubject(subject)
-		const qualified = buildQualificationSubject(subject, aggregate)
+	#subject(admission: SubjectAdmission, aggregate?: AggregateProjection): ProgramResult {
+		const admitted = admission.subject
+		if (admitted === undefined) {
+			const refused = buildRefusedQualification(this.definition.qualification, admission)
+			this.#emitter.emit('qualify', refused)
+			const status = deriveStatus(this.definition, refused)
+			const result = buildProgramResult(this.definition, refused, undefined, [], status, {
+				admission,
+			})
+			this.#emitter.emit('execute', result)
+			return result
+		}
+		const qualified = buildQualificationSubject(admitted, aggregate)
 		const qualification = this.#qualifier.qualify(qualified, this.definition.qualification)
 		if (!isQualificationResult(qualification)) {
 			throw new ProgramError(
@@ -321,11 +342,11 @@ export class Program implements ProgramInterface {
 		this.#emitter.emit('qualify', qualification)
 
 		if (!qualification.success || qualification.eligibility !== 'eligible') {
-			return this.#finish(subject, qualification, undefined)
+			return this.#finish(admitted, qualification, undefined, admission)
 		}
 
 		const lines = selectProgramLines(this.definition.rating?.lines ?? [], qualification.scopes)
-		const rating = lines.length === 0 ? undefined : this.#rater.rate(lines, subject)
+		const rating = lines.length === 0 ? undefined : this.#rater.rate(lines, admitted)
 		if (rating !== undefined) {
 			if (!isRatingResult(rating)) {
 				throw new ProgramError(
@@ -337,39 +358,37 @@ export class Program implements ProgramInterface {
 			this.#emitter.emit('rate', rating)
 		}
 
-		return this.#finish(subject, qualification, rating)
+		return this.#finish(admitted, qualification, rating, admission)
 	}
 
 	#finish(
 		subject: Subject,
 		qualification: QualificationResult,
-		rating?: RatingResult,
+		rating: RatingResult | undefined,
+		admission: SubjectAdmission,
 	): ProgramResult {
 		const notices = buildNoticeDeterminations(this.definition.notices ?? [], subject)
 		for (const notice of notices) this.#emitter.emit('determine', notice)
 
 		const status = deriveStatus(this.definition, qualification, rating)
-		const initial = buildProgramResult(this.definition, qualification, rating, notices, status)
+		const initial = buildProgramResult(this.definition, qualification, rating, notices, status, {
+			admission,
+		})
 
 		const authority = this.definition.authority
-		if (authority === undefined) {
+		// An incomplete outcome holds no answer an authority could read.
+		if (authority === undefined || status === 'incomplete') {
 			this.#emitter.emit('execute', initial)
 			return initial
 		}
 
 		const outcome = { [OUTCOME_KEY]: buildOutcomeProjection(initial) }
-		const resolved = this.#engine.reason(outcome, authority)
+		const resolved = this.#reason(outcome, authority)
 		if (!isLogicalResult(resolved)) {
 			throw new ProgramError('MISMATCH', 'Authority returned invalid logical result', authority.id)
 		}
 
-		const limits = buildLimitDeterminations(
-			authority,
-			resolved,
-			outcome,
-			this.#evaluator,
-			this.#labels,
-		)
+		const limits = buildLimitDeterminations(authority, resolved, outcome, this.#labels)
 		for (const limit of limits) this.#emitter.emit('determine', limit)
 
 		const result = buildProgramResult(
@@ -378,7 +397,7 @@ export class Program implements ProgramInterface {
 			rating,
 			[...notices, ...limits],
 			status,
-			{ authority: resolved },
+			{ authority: resolved, admission },
 		)
 
 		if (result.decision !== undefined) this.#emitter.emit('decide', result.decision, result)
@@ -388,11 +407,15 @@ export class Program implements ProgramInterface {
 
 	#aggregate(subjects: readonly Subject[]): AggregateResult {
 		for (const subject of subjects) assertProgramSubject(subject)
+		const admissions = subjects.map((subject) => this.#door.admit(subject, this.definition.shape))
+		const admitted = admissions.flatMap(({ subject }) => (subject === undefined ? [] : [subject]))
+		// While any subject is refused the sums are not the batch's, so nothing reads them.
+		const whole = admitted.length === subjects.length
 
 		const definition = this.definition.aggregate
 		const fields = [...(definition?.fields ?? [])]
-		const sums = aggregateSums(subjects, fields)
-		const groups = aggregateGroups(subjects, fields, definition?.partition)
+		const sums = aggregateSums(admitted, fields)
+		const groups = aggregateGroups(admitted, fields, definition?.partition)
 		const initial = buildEmptyTallies(fields)
 		const entries: Array<{
 			readonly index: number
@@ -400,13 +423,14 @@ export class Program implements ProgramInterface {
 			readonly tallies: Readonly<Record<Status, Tally>>
 		}> = []
 		const length = subjects.length
-		subjects.forEach((subject, index) => {
+		admissions.forEach((admission, index) => {
+			const read = admission.subject
 			const projection =
-				definition === undefined
+				definition === undefined || read === undefined || !whole
 					? undefined
-					: buildAggregateProjection(subject, subjects.length, sums, groups, definition.partition)
-			const result = this.#subject(subject, projection)
-			const tallies = tallySubject(entries.at(-1)?.tallies ?? initial, result, subject, fields)
+					: buildAggregateProjection(read, subjects.length, sums, groups, definition.partition)
+			const result = this.#subject(admission, projection)
+			const tallies = tallySubject(entries.at(-1)?.tallies ?? initial, result, read ?? {}, fields)
 			entries.push({ index, result, tallies })
 		})
 		const results = Object.assign(
@@ -415,15 +439,15 @@ export class Program implements ProgramInterface {
 		)
 		const tallies = entries.at(-1)?.tallies ?? initial
 
-		const gates = this.#aggregateLimits(subjects.length, sums, groups)
+		const gates = whole ? this.#aggregateLimits(subjects.length, sums, groups) : undefined
 		const result = buildAggregateResult(
 			this.definition,
 			results,
-			gates.determinations,
+			gates?.determinations ?? [],
 			groups,
 			tallies,
 			sums,
-			gates.resolved === undefined ? undefined : { gates: gates.resolved },
+			gates?.resolved === undefined ? undefined : { gates: gates.resolved },
 		)
 		this.#emitter.emit('aggregate', result)
 		return result
@@ -438,7 +462,7 @@ export class Program implements ProgramInterface {
 		if (gates === undefined) return { determinations: [] }
 
 		const record = buildAggregateRecord(count, sums, groups)
-		const resolved = this.#engine.reason(record, gates)
+		const resolved = this.#reason(record, gates)
 		if (!isLogicalResult(resolved)) {
 			throw new ProgramError(
 				'MISMATCH',
@@ -447,15 +471,19 @@ export class Program implements ProgramInterface {
 			)
 		}
 
-		const determinations = buildLimitDeterminations(
-			gates,
-			resolved,
-			record,
-			this.#evaluator,
-			this.#labels,
-		)
+		const determinations = buildLimitDeterminations(gates, resolved, record, this.#labels)
 		for (const determination of determinations) this.#emitter.emit('determine', determination)
 		return { determinations, resolved }
+	}
+
+	// A definition a borrowed engine refuses is an authoring error, so it reaches the caller as one.
+	#reason(subject: Subject, definition: LogicalDefinition): ReasonResult {
+		const outcome = attempt(() => this.#engine.reason(subject, definition))
+		if (outcome.success) return outcome.value
+		if (isReasonError(outcome.error) && outcome.error.code === 'INVALID') {
+			throw new ProgramError('DEFINITION', outcome.error.message, definition.id, outcome.error)
+		}
+		throw outcome.error
 	}
 
 	#alive(): void {

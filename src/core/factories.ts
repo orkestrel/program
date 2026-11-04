@@ -1,3 +1,4 @@
+import type { ContractInterface } from '@orkestrel/contract'
 import type {
 	ProgramDefinition,
 	ProgramInterface,
@@ -5,6 +6,8 @@ import type {
 	ProgramManagerOptions,
 	ProgramOptions,
 } from './types.js'
+import { createContract } from '@orkestrel/contract'
+import { createProgramDefinitionShape } from './shapers.js'
 import { Program } from './programs/Program.js'
 import { ProgramManager } from './programs/ProgramManager.js'
 
@@ -66,4 +69,25 @@ export function createProgram(
  */
 export function createProgramManager(options?: ProgramManagerOptions): ProgramManagerInterface {
 	return new ProgramManager(options)
+}
+
+/**
+ * Creates a `ProgramDefinition` as a contract. Cross it on `is`, never `parse`.
+ *
+ * @remarks
+ * A function because a logical definition's shape is recursive and costs at import. `is` reads a
+ * nested `shape` as any JSON value and the guard reads it as a shape, so a definition crossing a
+ * boundary goes through `isProgramDefinition` as well.
+ *
+ * @returns The program definition's contract
+ *
+ * @example
+ * ```ts
+ * import { createProgramDefinitionContract } from '@orkestrel/program'
+ *
+ * createProgramDefinitionContract().is({ id: 'p' }) // false
+ * ```
+ */
+export function createProgramDefinitionContract(): ContractInterface<unknown> {
+	return createContract(createProgramDefinitionShape())
 }

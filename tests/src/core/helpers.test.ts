@@ -1,7 +1,21 @@
 import type { FieldPath } from '@orkestrel/contract'
 import type { Eligibility } from '@orkestrel/qualifier'
 import { describe, expect, it } from 'vitest'
-import { isRecord } from '@orkestrel/contract'
+import {
+	arrayShape,
+	booleanShape,
+	isRecord,
+	jsonShape,
+	literalShape,
+	nullableShape,
+	nullShape,
+	numberShape,
+	objectShape,
+	optionalShape,
+	rawShape,
+	stringShape,
+	unionShape,
+} from '@orkestrel/contract'
 import { captureError } from '@orkestrel/test'
 import {
 	AGGREGATE_KEY,
@@ -21,12 +35,16 @@ import {
 	buildOutcomeProjection,
 	buildProgramResult,
 	buildQualificationSubject,
+	buildRefusedQualification,
 	completeTallies,
 	decideEligibility,
 	deriveStatus,
+	findAggregateGap,
 	findMissingScopes,
 	formatGroupKey,
 	hasProgramKey,
+	isInputFault,
+	scanProgramShape,
 	selectProgramLines,
 	sumFields,
 	tallySubject,
@@ -37,7 +55,6 @@ import { createRater } from '@orkestrel/rater'
 import { buildLineDefinition, buildRatingDefinition } from '@orkestrel/rater'
 import {
 	createAtom,
-	createEvaluator,
 	createLogicalDefinition,
 	createLogicalReasoner,
 	createQuantitativeReasoner,
@@ -157,6 +174,10 @@ describe('helpers', () => {
 					{
 						lines: [],
 						success: true,
+						errors: [],
+						faults: [],
+						repairs: [],
+						defaulted: [],
 					},
 				),
 			).toBe('unrated')
@@ -182,10 +203,17 @@ describe('helpers', () => {
 									trace: [],
 									errors: ['failed'],
 									success: false,
+									faults: [],
+									repairs: [],
+									defaulted: [],
 								},
 							},
 						],
 						success: false,
+						errors: ['base: failed'],
+						faults: [],
+						repairs: [],
+						defaulted: [],
 					},
 				),
 			).toBe('unrated')
@@ -311,7 +339,7 @@ describe('helpers', () => {
 			const authority = createLogicalDefinition('authority', 'Authority', [
 				createRule(
 					'never',
-					[createAtom('blocked', 'equals', true)],
+					[createAtom(['outcome', 'status'], 'equals', 'never')],
 					createAtom('limited', 'equals', true),
 				),
 			])
@@ -334,7 +362,7 @@ describe('helpers', () => {
 				standardProgramDefinition,
 				qualification,
 				rating,
-				[{ id: 'manual', effect: 'limit', applied: true, premises: [] }],
+				[{ id: 'manual', effect: 'limit', state: 'met', premises: [] }],
 				'conditional',
 				{ authority: resolved },
 			)
@@ -757,7 +785,7 @@ describe('helpers', () => {
 		it('builds empty sums and complete tallies', () => {
 			expect(buildEmptySums(['amount'])).toEqual({ amount: 0 })
 			const tallies = buildEmptyTallies(['amount'])
-			expect(Object.keys(tallies)).toHaveLength(5)
+			expect(Object.keys(tallies)).toHaveLength(6)
 			expect(tallies.eligible.sums.amount).toBe(0)
 		})
 
@@ -811,12 +839,15 @@ describe('helpers', () => {
 			)
 			const failedGates = {
 				reasoning: 'logical' as const,
-				conclusion: false,
+				conclusion: 'unmet' as const,
 				rules: [],
 				count: 0,
 				success: false,
 				trace: ['gate trace entry'],
 				errors: ['gate error entry'],
+				faults: [],
+				repairs: [],
+				defaulted: [],
 			}
 			const aggregate = buildAggregateResult(
 				standardProgramDefinition,
@@ -928,12 +959,7 @@ describe('helpers', () => {
 			const engine = createReason({ reasoners: [createLogicalReasoner()], bail: false })
 			const resolved = engine.reason({ id: 'risk-1', blocked: true }, definition)
 			if (resolved.reasoning !== 'logical') throw new Error('expected logical result')
-			const limits = buildLimitDeterminations(
-				definition,
-				resolved,
-				{ id: 'risk-1', blocked: true },
-				createEvaluator(),
-			)
+			const limits = buildLimitDeterminations(definition, resolved, { id: 'risk-1', blocked: true })
 			expect(limits).toHaveLength(1)
 			expect(limits[0]?.effect).toBe('limit')
 			engine.destroy()
@@ -950,12 +976,7 @@ describe('helpers', () => {
 			const engine = createReason({ reasoners: [createLogicalReasoner()], bail: false })
 			const resolved = engine.reason({ blocked: true }, definition)
 			if (resolved.reasoning !== 'logical') throw new Error('expected logical result')
-			const limits = buildLimitDeterminations(
-				definition,
-				resolved,
-				{ blocked: true },
-				createEvaluator(),
-			)
+			const limits = buildLimitDeterminations(definition, resolved, { blocked: true })
 			expect(limits).toHaveLength(1)
 			expect(Object.hasOwn(limits[0] ?? {}, 'message')).toBe(false)
 			engine.destroy()
@@ -975,12 +996,7 @@ describe('helpers', () => {
 			const engine = createReason({ reasoners: [createLogicalReasoner()], bail: false })
 			const resolved = engine.reason({ blocked: false }, definition)
 			if (resolved.reasoning !== 'logical') throw new Error('expected logical result')
-			const limits = buildLimitDeterminations(
-				definition,
-				resolved,
-				{ blocked: false },
-				createEvaluator(),
-			)
+			const limits = buildLimitDeterminations(definition, resolved, { blocked: false })
 			expect(limits).toEqual([])
 			engine.destroy()
 		})
@@ -1047,7 +1063,7 @@ describe('helpers', () => {
 				noticeProgramDefinition.notices ?? [],
 				eligibleSubject,
 			)
-			expect(notices[0]?.applied).toBe(true)
+			expect(notices[0]?.state).toBe('met')
 		})
 
 		it('derives conditional status from a real conditional program qualification', () => {
@@ -1135,5 +1151,201 @@ describe('helpers', () => {
 			expect(descriptor?.value).toEqual({ x: 1 })
 			expect(descriptor?.enumerable).toBe(true)
 		})
+	})
+})
+
+describe('isInputFault', () => {
+	it('names an input, and leaves a read of the aggregate projection out', () => {
+		expect(isInputFault({ reason: 'missing', path: 'age', expected: 'number' })).toBe(true)
+		expect(isInputFault({ reason: 'missing', path: ['home', 'city'], expected: 'string' })).toBe(
+			true,
+		)
+		expect(
+			isInputFault({ reason: 'missing', path: ['aggregate', 'count'], expected: 'number' }),
+		).toBe(false)
+	})
+
+	it('reads a plain string as one key, so a dotted name is still an input', () => {
+		expect(isInputFault({ reason: 'missing', path: 'aggregate.count', expected: 'number' })).toBe(
+			true,
+		)
+	})
+})
+
+describe('buildRefusedQualification', () => {
+	it('stands in for a refused subject with what the door said and nothing found', () => {
+		const fault = { reason: 'extra', path: 'x' } as const
+		const refused = buildRefusedQualification(createQualificationDefinition('q', 'Q', []), {
+			faults: [fault],
+			repairs: [],
+			defaulted: [],
+			errors: ['Field "x" is not declared'],
+		})
+		expect(refused).toEqual({
+			id: 'q',
+			name: 'Q',
+			eligibility: 'referral',
+			scopes: {},
+			findings: [],
+			derivations: [],
+			success: false,
+			trace: [],
+			errors: ['Field "x" is not declared'],
+			faults: [fault],
+			repairs: [],
+			defaulted: [],
+		})
+	})
+})
+
+describe('findAggregateGap', () => {
+	const shape = objectShape({
+		whole: numberShape(),
+		absent: optionalShape(numberShape()),
+		filled: optionalShape(numberShape(), { default: 0 }),
+		empty: nullableShape(numberShape()),
+		none: nullShape(),
+		json: jsonShape(),
+		raw: rawShape({}),
+		either: unionShape(numberShape(), stringShape()),
+		maybe: unionShape(numberShape(), nullShape()),
+		wrapped: unionShape(numberShape(), nullableShape(stringShape())),
+		home: objectShape({ rooms: numberShape(), wing: optionalShape(numberShape()) }),
+		list: arrayShape(numberShape()),
+	})
+
+	it('finds no gap in a field that always holds a value', () => {
+		expect(findAggregateGap(shape, 'whole')).toBeUndefined()
+		expect(findAggregateGap(shape, 'filled')).toBeUndefined()
+		expect(findAggregateGap(shape, 'either')).toBeUndefined()
+		expect(findAggregateGap(shape, ['home', 'rooms'])).toBeUndefined()
+	})
+
+	it('finds a field the shape lets be absent', () => {
+		expect(findAggregateGap(shape, 'absent')).toBe('may be absent')
+		expect(findAggregateGap(shape, 'ghost')).toBe('may be absent')
+		expect(findAggregateGap(shape, ['home', 'wing'])).toBe('may be absent')
+		expect(findAggregateGap(shape, ['home', 'ghost'])).toBe('may be absent')
+	})
+
+	it('finds a path past a value, which the value cannot hold', () => {
+		expect(findAggregateGap(shape, ['whole', 'part'])).toBe('may be absent')
+		expect(findAggregateGap(shape, ['list', '0'])).toBe('may be absent')
+	})
+
+	it('finds a field the shape lets be null, a json and a raw field included', () => {
+		expect(findAggregateGap(shape, 'empty')).toBe('may be null')
+		expect(findAggregateGap(shape, 'none')).toBe('may be null')
+		expect(findAggregateGap(shape, 'json')).toBe('may be null')
+		expect(findAggregateGap(shape, 'raw')).toBe('may be null')
+		expect(findAggregateGap(shape, 'maybe')).toBe('may be null')
+		expect(findAggregateGap(shape, 'wrapped')).toBe('may be null')
+	})
+})
+
+describe('scanProgramShape', () => {
+	const empty = createQualificationDefinition('q', 'Q', [])
+
+	it('reads nothing with no shape, and still refuses a shape nested under the program', () => {
+		expect(scanProgramShape(buildProgramDefinition('p', 'P', empty))).toEqual({
+			errors: [],
+			warnings: [],
+		})
+		const nested = createQualificationDefinition('q', 'Q', [], {
+			shape: objectShape({ id: stringShape() }),
+		})
+		expect(scanProgramShape(buildProgramDefinition('p', 'P', nested)).errors).toEqual([
+			'Qualification may not carry a shape: a program reads its subject once, at its own door',
+		])
+	})
+
+	it('refuses an aggregate field and a partition that may hold no value', () => {
+		const definition = buildProgramDefinition('p', 'P', empty, undefined, {
+			shape: objectShape({ amount: jsonShape(), region: optionalShape(stringShape()) }),
+			aggregate: buildAggregateDefinition(['amount'], { partition: 'region' }),
+		})
+		expect(scanProgramShape(definition).errors).toEqual([
+			'Aggregate field "amount" may be null',
+			'Aggregate field "region" may be absent',
+		])
+	})
+
+	it('refuses a summed field no number can fill, and allows the partition to be text', () => {
+		const definition = buildProgramDefinition('p', 'P', empty, undefined, {
+			shape: objectShape({
+				name: stringShape(),
+				flag: booleanShape(),
+				list: arrayShape(numberShape()),
+				home: objectShape({ rooms: numberShape() }),
+				count: numberShape(),
+				tier: literalShape([1, 2]),
+				rooms: optionalShape(numberShape(), { default: 0 }),
+				region: stringShape(),
+			}),
+			aggregate: buildAggregateDefinition(
+				['name', 'flag', 'list', 'home', 'count', 'tier', 'rooms', ['home', 'rooms']],
+				{ partition: 'region' },
+			),
+		})
+		expect(scanProgramShape(definition).errors).toEqual([
+			'Aggregate field "name" holds no number',
+			'Aggregate field "flag" holds no number',
+			'Aggregate field "list" holds no number',
+			'Aggregate field "home" holds no number',
+		])
+	})
+
+	it('leaves a read of the aggregate projection to the program, but not a name that looks like one', () => {
+		const shape = objectShape({ id: stringShape() })
+		const projected = createLogicalDefinition('gates', 'Gates', [
+			createRule(
+				'r',
+				[createAtom(['aggregate', 'count'], 'above', 0)],
+				createAtom('ok', 'equals', true),
+			),
+		])
+		const dotted = createLogicalDefinition('gates', 'Gates', [
+			createRule(
+				'r',
+				[createAtom('aggregate.count', 'above', 0)],
+				createAtom('ok', 'equals', true),
+			),
+		])
+		expect(
+			scanProgramShape(
+				buildProgramDefinition(
+					'p',
+					'P',
+					createQualificationDefinition('q', 'Q', [projected]),
+					undefined,
+					{
+						shape,
+					},
+				),
+			).errors,
+		).toEqual([])
+		expect(
+			scanProgramShape(
+				buildProgramDefinition(
+					'p',
+					'P',
+					createQualificationDefinition('q', 'Q', [dotted]),
+					undefined,
+					{
+						shape,
+					},
+				),
+			).errors,
+		).toEqual(['Field "aggregate.count" is read, and the shape does not declare it'])
+	})
+
+	it('reads each token a notice reads, and accepts a declared one', () => {
+		const definition = buildProgramDefinition('p', 'P', empty, undefined, {
+			shape: objectShape({ id: stringShape() }),
+			notices: [buildNotice('fine', 'Hello {{ id }}'), buildNotice('typo', '{{id}} and {{nam}}')],
+		})
+		expect(scanProgramShape(definition).errors).toEqual([
+			'Notice "typo" reads "nam", and the shape does not declare it',
+		])
 	})
 })

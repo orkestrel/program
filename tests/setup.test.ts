@@ -256,7 +256,10 @@ describe('createRecordingEngine', () => {
 
 	it('reasons through the real engine, one result per subject of a batch', () => {
 		const engine = createRecordingEngine()
-		const results = engine.reason(batchSubjects, cleanAuthority)
+		const results = engine.reason(
+			batchSubjects.map(() => ({ outcome: { status: 'eligible' } })),
+			cleanAuthority,
+		)
 
 		expect(results).toHaveLength(batchSubjects.length)
 		expect(results.map((result) => result.success)).toEqual([true, true, true])
@@ -301,7 +304,7 @@ describe('recordEvents', () => {
 		program.emitter.emit('determine', {
 			id: 'audit',
 			effect: 'notice',
-			applied: true,
+			state: 'met',
 			premises: [],
 		})
 		program.emitter.emit('rate', rating)
@@ -541,6 +544,9 @@ describe('buildQualificationResult', () => {
 			success: true,
 			trace: [],
 			errors: [],
+			faults: [],
+			repairs: [],
+			defaulted: [],
 		})
 	})
 
@@ -598,8 +604,8 @@ describe('the qualification fixtures', () => {
 		const result = qualifyCase(conditionalSubject, conditionalProgramDefinition.qualification)
 
 		expect(result.eligibility).toBe('eligible')
-		expect(result.findings.map((finding) => [finding.effect, finding.applied])).toEqual([
-			['condition', true],
+		expect(result.findings.map((finding) => [finding.effect, finding.state])).toEqual([
+			['condition', 'met'],
 		])
 	})
 
@@ -634,7 +640,7 @@ describe('the qualification fixtures', () => {
 
 		expect(result.success).toBe(false)
 		expect(result.eligibility).toBe('referral')
-		expect(result.errors).toEqual(['failing-pass: Required factor "req" could not resolve source'])
+		expect(result.errors).toEqual(['Field "missing" is missing'])
 	})
 })
 
@@ -698,8 +704,8 @@ describe('buildBrokenLogicalDefinition', () => {
 		const result = concludeCase(eligibleSubject, buildBrokenLogicalDefinition('gates'))
 
 		expect(result.success).toBe(false)
-		expect(result.conclusion).toBe(false)
-		expect(result.errors).toEqual(['Rule "gates-rule" has no premises — skipped'])
+		expect(result.conclusion).toBe('unread')
+		expect(result.errors).toEqual(['Rule "gates-rule" has no premises'])
 	})
 
 	it('names its rule after the given id, so two broken fixtures never collide', () => {
@@ -710,10 +716,10 @@ describe('buildBrokenLogicalDefinition', () => {
 		}
 
 		expect(concludeCase(eligibleSubject, authority).errors).toEqual([
-			'Rule "broken-authority-gates-rule" has no premises — skipped',
+			'Rule "broken-authority-gates-rule" has no premises',
 		])
 		expect(concludeCase(eligibleSubject, gates).errors).toEqual([
-			'Rule "broken-aggregate-gates-rule" has no premises — skipped',
+			'Rule "broken-aggregate-gates-rule" has no premises',
 		])
 	})
 
@@ -739,7 +745,7 @@ describe('buildAggregateGateProgram', () => {
 		const gates = buildAggregateGateProgram(100).aggregate?.gates
 		if (gates === undefined) throw new Error('The aggregate-gate program declares gates')
 
-		expect(concludeCase({ amount: 500 }, gates).conclusion).toBe(false)
+		expect(concludeCase({ amount: 500 }, gates).conclusion).toBe('unread')
 		expect(checkAmount(gates, 500)).toBe(true)
 	})
 

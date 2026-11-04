@@ -103,6 +103,7 @@ class FixedReason implements ReasonInterface {
 
 class RecordingReason implements RecordingEngineInterface {
 	readonly #inner: ReasonInterface
+	readonly #calls: RecordedReasonCall[] = []
 	#destroyCount = 0
 
 	constructor(options?: ReasonOptions) {
@@ -121,12 +122,17 @@ class RecordingReason implements RecordingEngineInterface {
 		return this.#destroyCount
 	}
 
+	get calls(): readonly RecordedReasonCall[] {
+		return this.#calls
+	}
+
 	reason(subjects: readonly Subject[], definition: Definition): readonly ReasonResult[]
 	reason(subject: Subject, definition: Definition): ReasonResult
 	reason(
 		subjectsOrSubject: readonly Subject[] | Subject,
 		definition: Definition,
 	): readonly ReasonResult[] | ReasonResult {
+		this.#calls.push({ definition })
 		if (isArray<Subject>(subjectsOrSubject)) {
 			return this.#inner.reason(subjectsOrSubject, definition)
 		}
@@ -202,6 +208,18 @@ class QualificationResultClass implements QualificationResult {
 		return this.#result.errors
 	}
 
+	get faults() {
+		return this.#result.faults
+	}
+
+	get repairs() {
+		return this.#result.repairs
+	}
+
+	get defaulted() {
+		return this.#result.defaulted
+	}
+
 	get extension(): boolean {
 		return true
 	}
@@ -243,6 +261,18 @@ class MalformedQualificationResult implements QualificationResult {
 	get errors(): readonly string[] {
 		return []
 	}
+
+	get faults(): QualificationResult['faults'] {
+		return []
+	}
+
+	get repairs(): QualificationResult['repairs'] {
+		return []
+	}
+
+	get defaulted(): QualificationResult['defaulted'] {
+		return []
+	}
 }
 
 class MalformedRatingResult implements RatingResult {
@@ -253,6 +283,22 @@ class MalformedRatingResult implements RatingResult {
 	get success(): boolean {
 		return true
 	}
+
+	get errors(): readonly string[] {
+		return []
+	}
+
+	get faults(): RatingResult['faults'] {
+		return []
+	}
+
+	get repairs(): RatingResult['repairs'] {
+		return []
+	}
+
+	get defaulted(): RatingResult['defaulted'] {
+		return []
+	}
 }
 
 class MalformedLogicalResult implements LogicalResult {
@@ -260,8 +306,20 @@ class MalformedLogicalResult implements LogicalResult {
 		return 'logical'
 	}
 
-	get conclusion(): boolean {
-		return false
+	get conclusion(): 'unmet' {
+		return 'unmet'
+	}
+
+	get faults(): LogicalResult['faults'] {
+		return []
+	}
+
+	get repairs(): LogicalResult['repairs'] {
+		return []
+	}
+
+	get defaulted(): LogicalResult['defaulted'] {
+		return []
 	}
 
 	get rules(): LogicalResult['rules'] {
@@ -316,8 +374,8 @@ class ResultClass {
 		return Reflect.get(this.#record, 'effect')
 	}
 
-	get applied(): unknown {
-		return Reflect.get(this.#record, 'applied')
+	get state(): unknown {
+		return Reflect.get(this.#record, 'state')
 	}
 
 	get scope(): unknown {
@@ -346,6 +404,10 @@ class ResultClass {
 
 	get referral(): unknown {
 		return Reflect.get(this.#record, 'referral')
+	}
+
+	get incomplete(): unknown {
+		return Reflect.get(this.#record, 'incomplete')
 	}
 
 	get conditional(): unknown {
@@ -386,6 +448,18 @@ class ResultClass {
 
 	get errors(): unknown {
 		return Reflect.get(this.#record, 'errors')
+	}
+
+	get faults(): unknown {
+		return Reflect.get(this.#record, 'faults')
+	}
+
+	get repairs(): unknown {
+		return Reflect.get(this.#record, 'repairs')
+	}
+
+	get defaulted(): unknown {
+		return Reflect.get(this.#record, 'defaulted')
 	}
 
 	get subjects(): unknown {
@@ -565,6 +639,9 @@ export function buildQualificationResult(
 		success: true,
 		trace: [],
 		errors: [],
+		faults: [],
+		repairs: [],
+		defaulted: [],
 		...overrides,
 	}
 }
@@ -614,8 +691,13 @@ export function isSubjectArray(value: unknown): value is readonly Subject[] {
 	return Array.isArray(value)
 }
 
+export interface RecordedReasonCall {
+	readonly definition: Definition
+}
+
 export interface RecordingEngineInterface extends ReasonInterface {
 	readonly destroyCount: number
+	readonly calls: readonly RecordedReasonCall[]
 }
 
 export function createRecordingEngine(options?: ReasonOptions): RecordingEngineInterface {
@@ -868,7 +950,7 @@ export const conditionalAuthority = createLogicalDefinition('authority', 'Final 
 export const cleanAuthority = createLogicalDefinition('authority', 'Clean authority', [
 	createRule(
 		'never',
-		[createAtom('blocked', 'equals', true)],
+		[createAtom(['outcome', 'status'], 'equals', 'never')],
 		createAtom('limited', 'equals', true),
 	),
 ])
@@ -1184,12 +1266,12 @@ export function concludeCase(subject: Subject, definition: LogicalDefinition): L
 
 /** Reads an authority's verdict for one program outcome status. */
 export function checkStatus(definition: LogicalDefinition, status: Status): boolean {
-	return concludeCase({ outcome: { status } }, definition).conclusion
+	return concludeCase({ outcome: { status } }, definition).conclusion === 'met'
 }
 
 /** Reads an aggregate gate's verdict for one summed portfolio amount. */
 export function checkAmount(definition: LogicalDefinition, amount: number): boolean {
-	return concludeCase({ aggregate: { sums: { amount } } }, definition).conclusion
+	return concludeCase({ aggregate: { sums: { amount } } }, definition).conclusion === 'met'
 }
 
 /** Collects the `{{token}}` names one notice message interpolates. */

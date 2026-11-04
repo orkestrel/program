@@ -13,6 +13,7 @@ import type {
 	Tally,
 } from './types.js'
 import {
+	isAuditFault,
 	arrayOf,
 	isBoolean,
 	isJSONValue,
@@ -30,7 +31,7 @@ import {
 	isQualificationResult,
 } from '@orkestrel/qualifier'
 import { isRatingDefinition, isRatingResult } from '@orkestrel/rater'
-import { isFieldPath, isLogicalDefinition } from '@orkestrel/reason'
+import { isCheckState, isContractShape, isFieldPath, isLogicalDefinition } from '@orkestrel/reason'
 import { STATUSES } from './constants.js'
 
 /**
@@ -144,8 +145,9 @@ export function isProgramDefinition(value: unknown): value is ProgramDefinition 
 			authority: isLogicalDefinition,
 			aggregate: isAggregateDefinition,
 			metadata: isJSONValue,
+			shape: isContractShape,
 		},
-		['description', 'rating', 'notices', 'authority', 'aggregate', 'metadata'],
+		['description', 'rating', 'notices', 'authority', 'aggregate', 'metadata', 'shape'],
 	)(value)
 }
 
@@ -188,14 +190,14 @@ export function isProgramSums(value: unknown): value is Readonly<Record<string, 
  * ```ts
  * import { isDetermination } from '@orkestrel/program'
  *
- * isDetermination({ id: 'audit', effect: 'notice', applied: true, premises: [] }) // true
+ * isDetermination({ id: 'audit', effect: 'notice', state: 'met', premises: [] }) // true
  * ```
  */
 export const isDetermination: Guard<Determination> = objectOf(
 	{
 		id: isString,
 		effect: isProgramEffect,
-		applied: isBoolean,
+		state: isCheckState,
 		scope: isString,
 		message: isString,
 		premises: arrayOf(isPremise),
@@ -298,6 +300,9 @@ export const isProgramResult: Guard<ProgramResult> = objectOf(
 		success: isBoolean,
 		trace: arrayOf(isString),
 		errors: arrayOf(isString),
+		faults: arrayOf(isAuditFault),
+		repairs: arrayOf(isAuditFault),
+		defaulted: arrayOf(isFieldPath),
 	},
 	['decision', 'rating'],
 )
@@ -333,4 +338,7 @@ export const isAggregateResult: Guard<AggregateResult> = objectOf({
 	success: isBoolean,
 	trace: arrayOf(isString),
 	errors: arrayOf(isString),
+	faults: arrayOf(isAuditFault),
+	repairs: arrayOf(isAuditFault),
+	defaulted: arrayOf(isFieldPath),
 })

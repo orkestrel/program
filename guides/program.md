@@ -11,8 +11,10 @@ matching line before the first rating call. Omitting `rating` authors a
 first-class eligibility-only program — the rater is never invoked, an eligible
 subject resolves to `'eligible'` (or `'conditional'` under an applied condition),
 and status is never `'unrated'`; an authored rating with zero lines still yields
-`'unrated'`, unchanged. The rater always receives the original subject;
-qualification and aggregate working projections stay private to orchestration.
+`'unrated'`, unchanged. A definition's `shape` is read at the door before anything else reads the
+subject, and missing information reads `'incomplete'` with eligibility `'referral'` and no decision.
+The rater always receives what the door admitted; qualification and aggregate working projections
+stay private to orchestration.
 `Program` executes synchronously. Its result is repeatable only while inputs and
 options stay unchanged and dependency behavior remains unchanged and deterministic.
 
@@ -22,7 +24,8 @@ delegating eligibility to `Qualifier`, amounts and worksheets to `Rater`, and
 logical or quantitative mechanics to the shared `@orkestrel/reason` engine behind
 them. Every output is a fresh `ProgramResult` or `AggregateResult` carrying the
 nested qualification and rating evidence, program determinations, trace, errors,
-status, and optional decision. `Program` either receives injected qualifier,
+status, optional decision, and the `faults`, `repairs`, and `defaulted` a caller asks and reports from.
+`Program` either receives injected qualifier,
 rater, and engine instances (never destroyed by `Program`) or creates and owns
 one shared quantitative-plus-logical engine (`bail: false`), destroyed in
 `destroy()`. Every `execute` call fires through `Program`'s typed `emitter`.
@@ -129,18 +132,18 @@ manager.destroy()
 | `Status`                  | type      | `(typeof STATUSES)[number]`                                                                                                                                                                                                                                                                                                                                                             | Identifies the presentation and tally status derived from eligibility, conditions, and rating success. |
 | `ProgramEffect`           | type      | `'notice' \| 'limit'`                                                                                                                                                                                                                                                                                                                                                                   | Identifies a post-qualification program determination effect.                                          |
 | `ProgramErrorCode`        | type      | `'DUPLICATE' \| 'MISSING' \| 'DEFINITION' \| 'MISMATCH' \| 'RESERVED' \| 'DESTROYED'`                                                                                                                                                                                                                                                                                                   | Identifies a coded `ProgramError` programmer-error code.                                               |
-| `ProgramInput`            | interface | `{ description?, notices?, authority?, aggregate?, metadata? }`                                                                                                                                                                                                                                                                                                                         | Describes the optional fields accepted by `buildProgramDefinition`.                                    |
+| `ProgramInput`            | interface | `{ description?, notices?, authority?, aggregate?, metadata?, shape? }`                                                                                                                                                                                                                                                                                                                 | Describes the optional fields accepted by `buildProgramDefinition`.                                    |
 | `NoticeInput`             | interface | `{ scope? }`                                                                                                                                                                                                                                                                                                                                                                            | Describes the optional fields accepted by `buildNotice`.                                               |
 | `AggregateInput`          | interface | `{ partition?, gates? }`                                                                                                                                                                                                                                                                                                                                                                | Describes the optional fields accepted by `buildAggregateDefinition`.                                  |
 | `Notice`                  | interface | `{ id, message, scope? }`                                                                                                                                                                                                                                                                                                                                                               | Describes an authored, unconditional program notice.                                                   |
-| `Determination`           | interface | `{ id, effect, applied, scope?, message?, premises }`                                                                                                                                                                                                                                                                                                                                   | Describes one resolved notice or authority-limit outcome.                                              |
+| `Determination`           | interface | `{ id, effect, state, scope?, message?, premises }`                                                                                                                                                                                                                                                                                                                                     | Describes one resolved notice or authority-limit outcome.                                              |
 | `AggregateDefinition`     | interface | `{ fields, partition?, gates? }`                                                                                                                                                                                                                                                                                                                                                        | Describes batch aggregate fields, an optional partition field, and optional gates.                     |
 | `AggregateProjection`     | interface | `{ count, sums, group? }`                                                                                                                                                                                                                                                                                                                                                               | Describes one subject's private aggregate working projection.                                          |
 | `AggregateGroup`          | interface | `{ key, count, sums }`                                                                                                                                                                                                                                                                                                                                                                  | Describes one batch aggregate partition.                                                               |
 | `Tally`                   | interface | `{ count, sums }`                                                                                                                                                                                                                                                                                                                                                                       | Describes a status tally — a count plus summed aggregate fields.                                       |
-| `ProgramDefinition`       | interface | `{ id, name, description?, qualification, rating?, notices?, authority?, aggregate?, metadata? }`                                                                                                                                                                                                                                                                                       | Describes a pure authored program definition.                                                          |
-| `ProgramResult`           | interface | `{ id, name, eligibility, status, decision?, qualification, rating?, determinations, success, trace, errors }`                                                                                                                                                                                                                                                                          | Describes one subject's complete program outcome.                                                      |
-| `AggregateResult`         | interface | `{ id, name, subjects, determinations, groups, tallies, count, sums, success, trace, errors }`                                                                                                                                                                                                                                                                                          | Describes a batch program outcome across every subject.                                                |
+| `ProgramDefinition`       | interface | `{ id, name, description?, qualification, rating?, notices?, authority?, aggregate?, metadata?, shape? }`                                                                                                                                                                                                                                                                               | Describes a pure authored program definition.                                                          |
+| `ProgramResult`           | interface | `{ id, name, eligibility, status, decision?, qualification, rating?, determinations, success, trace, errors, faults, repairs, defaulted }`                                                                                                                                                                                                                                              | Describes one subject's complete program outcome.                                                      |
+| `AggregateResult`         | interface | `{ id, name, subjects, determinations, groups, tallies, count, sums, success, trace, errors, faults, repairs, defaulted }`                                                                                                                                                                                                                                                              | Describes a batch program outcome across every subject.                                                |
 | `ProgramEventMap`         | type      | `{ readonly qualify: readonly [result: QualificationResult]; readonly rate: readonly [result: RatingResult]; readonly determine: readonly [result: Determination]; readonly decide: readonly [decision: Decision, result: ProgramResult]; readonly execute: readonly [result: ProgramResult]; readonly aggregate: readonly [result: AggregateResult]; readonly destroy: readonly []; }` | Describes the push observation surface of a `ProgramInterface`.                                        |
 | `ProgramOptions`          | interface | `{ qualifier?, rater?, engine?, validate?, labels?, on?, error? }`                                                                                                                                                                                                                                                                                                                      | Describes the options for `createProgram` / the `Program` constructor.                                 |
 | `ProgramInterface`        | interface | `{ id, name, definition, emitter, execute(), validate(), destroy() }`                                                                                                                                                                                                                                                                                                                   | Defines one compiled program that composes one qualifier and one rater over a shared reason engine.    |
@@ -158,13 +161,16 @@ rater supplies `RatingDefinition` and `RatingResult`; reason supplies
 
 ### Constants
 
-| Name                       | Kind  | Signature                                                                   | Summary                                                                                                  |
-| -------------------------- | ----- | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `DEFAULT_PROGRAM_VALIDATE` | const | `true`                                                                      | Names the default definition validation policy, `true`, for `createProgram` / `ProgramManager.add`.      |
-| `STATUSES`                 | const | `readonly ["ineligible", "referral", "conditional", "unrated", "eligible"]` | Lists every `Status` literal in tally order — the source the union and its guard derive from.            |
-| `ELIGIBILITY_DECISIONS`    | const | `Readonly<Record<Eligibility, Decision>>`                                   | Maps each global eligibility to its deterministic authority decision.                                    |
-| `AGGREGATE_KEY`            | const | `"aggregate"`                                                               | Names the reserved working-subject key a batch's aggregate projection is written under, `'aggregate'`.   |
-| `OUTCOME_KEY`              | const | `"outcome"`                                                                 | Names the reserved working-subject key the authority's outcome projection is written under, `'outcome'`. |
+| Name                       | Kind  | Signature                                                                                 | Summary                                                                                                  |
+| -------------------------- | ----- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `UNSUMMED_CATEGORIES`      | const | `readonly string[]`                                                                       | Lists the shape categories no aggregate sum can read a number from.                                      |
+| `PROGRAM_EFFECTS`          | const | `readonly ProgramEffect[]`                                                                | Lists every `ProgramEffect` literal, the source the determination shape reads.                           |
+| `DECISIONS`                | const | `readonly Decision[]`                                                                     | Lists every `Decision` literal, the source the decision shape reads.                                     |
+| `DEFAULT_PROGRAM_VALIDATE` | const | `true`                                                                                    | Names the default definition validation policy, `true`, for `createProgram` / `ProgramManager.add`.      |
+| `STATUSES`                 | const | `readonly ["ineligible", "referral", "incomplete", "conditional", "unrated", "eligible"]` | Lists every `Status` literal in tally order — the source the union and its guard derive from.            |
+| `ELIGIBILITY_DECISIONS`    | const | `Readonly<Record<Eligibility, Decision>>`                                                 | Maps each global eligibility to its deterministic authority decision.                                    |
+| `AGGREGATE_KEY`            | const | `"aggregate"`                                                                             | Names the reserved working-subject key a batch's aggregate projection is written under, `'aggregate'`.   |
+| `OUTCOME_KEY`              | const | `"outcome"`                                                                               | Names the reserved working-subject key the authority's outcome projection is written under, `'outcome'`. |
 
 `STATUSES` and `ELIGIBILITY_DECISIONS` are `Object.freeze`d; the reserved keys and
 the validation default are primitives. The reserved keys exist only for composed
@@ -250,7 +256,7 @@ isStatus('conditional') // true
 isNotice({ id: 'file', message: 'Subject retained for audit' }) // true
 isAggregateDefinition({ fields: ['amount'], partition: 'location' }) // true
 isProgramDefinition(definition) // true
-isDetermination({ id: 'audit', effect: 'notice', applied: true, premises: [] }) // true
+isDetermination({ id: 'audit', effect: 'notice', state: 'met', premises: [] }) // true
 isProgramResult(program.execute(subject)) // true
 isAggregateResult(program.execute(subjects)) // true
 ```
@@ -264,18 +270,23 @@ The program helpers are pure orchestration leaves. They do not reproduce qualifi
 rater, or reason logic — message interpolation and rich premise construction for
 authority and aggregate-gate rules reuse `@orkestrel/qualifier`'s own
 `interpolateMessage`, `findRule`, and `ruleToPremises` (all public qualifier exports,
-generic over any `Rule`/`Subject`/`EvaluatorInterface`) rather than re-implementing
-them. `Program` owns one stateless `#evaluator` (created with `createEvaluator()`,
-never destroyed — it holds no state to tear down) purely to drive that reuse.
+generic over any `Rule`) rather than re-implementing them, so a premise reports what the rule
+itself read.
 
 | Name                        | Kind     | Signature                                                                                                                                                                                                                                                                                              | Summary                                                                                                                              |
 | --------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `projectAggregateResult`    | function | `(result: AggregateResult) => JSONValue \| undefined`                                                                                                                                                                                                                                                  | Projects a batch result to the JSON its contract reads.                                                                              |
+| `projectProgramResult`      | function | `(result: ProgramResult) => JSONValue \| undefined`                                                                                                                                                                                                                                                    | Projects a result to the JSON its contract reads.                                                                                    |
+| `scanProgramShape`          | function | `(definition: ProgramDefinition) => ShapeScan`                                                                                                                                                                                                                                                         | Describes what is wrong with a program's shape, against the program itself.                                                          |
+| `findAggregateGap`          | function | `(shape: ContractShape, field: FieldPath) => string \| undefined`                                                                                                                                                                                                                                      | Reads what a shape says about an aggregate field or the partition.                                                                   |
+| `buildRefusedQualification` | function | `(definition: QualificationDefinition, admission: SubjectAdmission) => QualificationResult`                                                                                                                                                                                                            | Builds the qualification a subject refused at the program's door stands in for.                                                      |
+| `isInputFault`              | function | `(fault: AuditFault) => boolean`                                                                                                                                                                                                                                                                       | Determines whether a fault names an input a question can be asked about.                                                             |
 | `selectProgramLines`        | function | `(lines: readonly LineDefinition[], scopes: Readonly<Record<string, Eligibility>>) => readonly LineDefinition[]`                                                                                                                                                                                       | Selects the rating lines a subject may be rated on from scoped eligibility.                                                          |
 | `deriveStatus`              | function | `(definition: ProgramDefinition, qualification: QualificationResult, rating?: RatingResult) => Status`                                                                                                                                                                                                 | Derives the final program `Status` from a definition's rating policy and qualification/rating evidence.                              |
 | `decideEligibility`         | function | `(eligibility: Eligibility) => Decision`                                                                                                                                                                                                                                                               | Maps a global `Eligibility` to its deterministic authority `Decision`.                                                               |
 | `buildNoticeDeterminations` | function | `(notices: readonly Notice[], subject: Readonly<Record<string, unknown>>) => readonly Determination[]`                                                                                                                                                                                                 | Resolves authored `Notice` values into unconditionally-applied `notice` `Determination` values.                                      |
-| `buildLimitDeterminations`  | function | `(definition: LogicalDefinition, result: LogicalResult, working: Readonly<Record<string, unknown>>, evaluator: EvaluatorInterface, labels?: Readonly<Record<string, string>>) => readonly Determination[]`                                                                                             | Converts a logical result's applied rules into `limit` `Determination` values.                                                       |
-| `buildProgramResult`        | function | `(definition: ProgramDefinition, qualification: QualificationResult, rating: RatingResult \| undefined, determinations: readonly Determination[], status: Status, options?: { readonly authority?: LogicalResult; }) => ProgramResult`                                                                 | Assembles a `ProgramResult` from its qualification, rating, and determination parts — before or after authority.                     |
+| `buildLimitDeterminations`  | function | `(definition: LogicalDefinition, result: LogicalResult, working: Readonly<Record<string, unknown>>, labels?: Readonly<Record<string, string>>) => readonly Determination[]`                                                                                                                            | Converts a logical result's applied rules into `limit` `Determination` values.                                                       |
+| `buildProgramResult`        | function | `(definition: ProgramDefinition, qualification: QualificationResult, rating: RatingResult \| undefined, determinations: readonly Determination[], status: Status, options?: { readonly authority?: LogicalResult; readonly admission?: SubjectAdmission; }) => ProgramResult`                          | Assembles a `ProgramResult` from its qualification, rating, and determination parts — before or after authority.                     |
 | `buildOutcomeProjection`    | function | `(result: ProgramResult) => Readonly<Record<string, unknown>>`                                                                                                                                                                                                                                         | Builds the private authority outcome projection from an assembled program result.                                                    |
 | `buildQualificationSubject` | function | `(subject: Subject, aggregate?: AggregateProjection) => Subject`                                                                                                                                                                                                                                       | Adds optional aggregate context to a private subject copy for qualification.                                                         |
 | `findMissingScopes`         | function | `(definition: ProgramDefinition) => readonly string[]`                                                                                                                                                                                                                                                 | Returns authored scopes (qualification ruling scopes or notice scopes) that name no rating line on the program.                      |
@@ -359,10 +370,11 @@ const definition = buildProgramDefinition('standard', 'Standard', qualification,
 
 ### Factories
 
-| Name                   | Kind     | Signature                                                                       | Summary                                                               |
-| ---------------------- | -------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `createProgram`        | function | `(definition: ProgramDefinition, options?: ProgramOptions) => ProgramInterface` | Creates one compiled `ProgramInterface` over a qualifier and rater.   |
-| `createProgramManager` | function | `(options?: ProgramManagerOptions) => ProgramManagerInterface`                  | Creates one ordered `ProgramManagerInterface` over compiled programs. |
+| Name                              | Kind     | Signature                                                                       | Summary                                                                       |
+| --------------------------------- | -------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `createProgramDefinitionContract` | function | `() => ContractInterface<unknown>`                                              | Creates a `ProgramDefinition` as a contract. Cross it on `is`, never `parse`. |
+| `createProgram`                   | function | `(definition: ProgramDefinition, options?: ProgramOptions) => ProgramInterface` | Creates one compiled `ProgramInterface` over a qualifier and rater.           |
+| `createProgramManager`            | function | `(options?: ProgramManagerOptions) => ProgramManagerInterface`                  | Creates one ordered `ProgramManagerInterface` over compiled programs.         |
 
 The factories compile entities. The authored definitions they compile are plain
 values, so their builders are helper leaves rather than factories.
@@ -384,6 +396,29 @@ program.execute({ id: 'risk-1' })
 program.destroy()
 manager.destroy()
 ```
+
+### Shapes
+
+The definition and results as `ContractShape` values.
+
+| Name                           | Kind     | Signature             | Summary                                                |
+| ------------------------------ | -------- | --------------------- | ------------------------------------------------------ |
+| `aggregateResultShape`         | const    | `ContractShape`       | Describes an `AggregateResult` in its JSON projection. |
+| `tallyShape`                   | const    | `ContractShape`       | Describes a `Tally` in its JSON projection.            |
+| `programSumsShape`             | const    | `ContractShape`       | Describes a sums record in its JSON projection.        |
+| `programResultShape`           | const    | `ContractShape`       | Describes a `ProgramResult` in its JSON projection.    |
+| `determinationShape`           | const    | `ContractShape`       | Describes a `Determination` in its JSON projection.    |
+| `createProgramDefinitionShape` | function | `() => ContractShape` | Creates the shape of a `ProgramDefinition`.            |
+| `noticeShape`                  | const    | `ContractShape`       | Describes a `Notice`.                                  |
+
+### Contracts
+
+The compiled contracts of what is flat enough to compile at import.
+
+| Name                      | Kind  | Signature                    | Summary                                                                                                |
+| ------------------------- | ----- | ---------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `aggregateResultContract` | const | `ContractInterface<unknown>` | Publishes an `AggregateResult`'s JSON projection as a contract, read through `projectAggregateResult`. |
+| `programResultContract`   | const | `ContractInterface<unknown>` | Publishes a `ProgramResult`'s JSON projection as a contract, read through `projectProgramResult`.      |
 
 ### Classes
 
@@ -468,18 +503,21 @@ keeps execution and collection responsibilities separate.
 For one subject:
 
 1. assert subject shape and reserved-key safety
-2. qualify against the optional private aggregate projection
-3. emit `qualify`
+2. admit the subject at the door, and on a refusal emit `qualify` with what the door said and go
+   to step 10 with nothing rated
+3. qualify what it admitted against the optional private aggregate projection
+   and emit `qualify`
 4. stop if qualification failed
 5. stop if global eligibility is `ineligible` or `referral`
 6. select rating lines from scoped eligibility
 7. skip rating when no line remains
-8. rate the selected lines against the original subject
+8. rate the selected lines against what the door admitted
 9. emit `rate`
 10. build notices
 11. derive status
 12. build the preliminary program result
-13. run optional authority against the private outcome projection
+13. run optional authority against the private outcome projection, unless the status is
+    `incomplete`, whose outcome holds no answer to read
 14. build and emit limit determinations
 15. derive the optional decision
 16. emit `decide` when present
@@ -584,14 +622,15 @@ approved-with-conditions and denied — a scoped restriction can yield
 
 For a subject array:
 
-1. validate every subject and reserved key
+1. validate every subject and reserved key, and admit each at the door
 2. collect aggregate fields from `definition.aggregate`
-3. compute overall sums
-4. compute optional groups
-5. build each subject's aggregate projection
+3. compute overall sums from what the door admitted
+4. compute optional groups the same way
+5. build each subject's aggregate projection, unless the door refused a subject
 6. execute subjects in input order
 7. tally every result by status
-8. run optional aggregate gates against the batch aggregate record (`count`, `sums`, `groups`)
+8. run optional aggregate gates against the batch aggregate record (`count`, `sums`, `groups`),
+   unless the door refused a subject
 9. convert applied rules to batch `limit` determinations
 10. emit `aggregate`
 
@@ -600,6 +639,10 @@ The aggregate-gate evaluation's `trace` and `errors` fold into
 `AggregateResult.success` additionally requires the gate evaluation to have produced
 no errors — a gate evaluation failure fails the batch result even when every subject
 execution succeeded.
+
+While the door has refused any subject the sums are not the batch's, so no subject reads the
+`aggregate` projection and no gate runs. Such a batch fails, and its `sums` hold only what was
+admitted.
 
 Batch aggregation does not modify individual rating subjects.
 
@@ -629,11 +672,18 @@ carries either key is rejected with `ProgramError('RESERVED')` before qualificat
 Status is explicit policy, not an opaque severity reducer. It resolves in this order:
 
 1. global ineligible
-2. global or scoped referral
-3. `ProgramDefinition.rating` is omitted (eligibility-only program) → `conditional` under an applied condition or scoped restriction, otherwise `eligible`, never `unrated`
-4. no successful rating, an authored rating with zero lines included → `unrated`
-5. applied condition or scoped restriction → `conditional`
-6. otherwise → `eligible`
+2. a fault on an input the answer needs → `incomplete`, with eligibility `referral` and no decision
+3. global or scoped referral
+4. `ProgramDefinition.rating` is omitted (eligibility-only program) → `conditional` under an applied condition or scoped restriction, otherwise `eligible`, never `unrated`
+5. no successful rating, an authored rating with zero lines included → `unrated`
+6. applied condition or scoped restriction → `conditional`
+7. otherwise → `eligible`
+
+`incomplete` is the question a caller can answer, and `faults` names what to ask for: the door's
+refusals, and any input a rule or a factor could not read. A later restriction still outranks it.
+`referral` stays what a rule refers. A read of the `aggregate` projection is the program's own, so it
+fails the run and asks nobody, and so does anything an authority could not read: write
+`and(outcome.rated equals true, outcome.total above 100)` so the read is only reached when it holds.
 
 ### Decision
 
@@ -647,12 +697,31 @@ Status is explicit policy, not an opaque severity reducer. It resolves in this o
 
 No decision is emitted without an authority definition.
 
+### The door
+
+`ProgramDefinition.shape` declares the subject, and a program is its one root: a qualification, a
+rating, or a line carrying a shape of its own is a `validate` error, because the program has already
+read the subject once. An authority and an aggregate's `gates` keep theirs, because they read a
+projection. With a shape, `validate` also refuses a field a pass, a line, or a notice reads that the
+shape does not declare, and an aggregate field or partition that may be absent or `null` with no
+default, because a sum would skip it and a partition would pool it. `validate` refuses an authority
+over a qualification with no passes, which has nothing to decide on. A program that only rates is
+allowed.
+
+An `AggregateResult` gathers its subjects' `faults`, `repairs`, and `defaulted`, each once by path, and
+each subject keeps its own. A result crosses a boundary as `projectProgramResult` or
+`projectAggregateResult`, which `programResultContract` and `aggregateResultContract` admit. A
+definition crosses on `createProgramDefinitionContract().is`, never `parse`. `is` reads a nested
+`shape` as any JSON value and the guard reads it as a shape, so `shape: 42` passes `is` and
+`isProgramDefinition` refuses it: a definition crossing a boundary goes through the guard as well.
+
 ### Success
 
 `ProgramResult.success` indicates execution integrity:
 
 - valid ineligibility can succeed
 - valid referral can succeed
+- an `incomplete` result fails
 - qualification errors fail
 - rating errors fail
 - authority errors fail
