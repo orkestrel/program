@@ -36,29 +36,26 @@ import {
 	findMessageTokens,
 	findRule,
 	interpolateMessage,
+	isQualifierError,
 	projectQualificationResult,
 	ruleToPremises,
 	scanDefinitionShape,
 } from '@orkestrel/qualifier'
-import { projectRatingResult } from '@orkestrel/rater'
+import { isRaterError, projectRatingResult } from '@orkestrel/rater'
 import {
+	describeFault,
 	filterUniqueFaults,
 	filterUniqueFields,
 	findDuplicates,
 	findFieldShape,
 	formatField,
+	isReasonError,
 	isReasonValidationResult,
 	projectValue,
 	scanShape,
 	scanShapeReads,
 } from '@orkestrel/reason'
-import {
-	AGGREGATE_KEY,
-	ELIGIBILITY_DECISIONS,
-	OUTCOME_KEY,
-	STATUSES,
-	UNSUMMED_CATEGORIES,
-} from './constants.js'
+import { AGGREGATE_KEY, ELIGIBILITY_DECISIONS, OUTCOME_KEY, STATUSES } from './constants.js'
 import { ProgramError } from './errors.js'
 import { isProgramDefinition } from './validators.js'
 
@@ -365,13 +362,19 @@ export function buildProgramResult(
 	const authorityTrace = authority === undefined ? [] : [...authority.trace]
 	const authorityErrors = authority === undefined ? [] : [...authority.errors]
 	const trace = [...qualification.trace, ...ratingTrace, ...authorityTrace]
+	const faults = filterUniqueFaults(
+		[...qualification.faults, ...(rating?.faults ?? [])].filter((fault) => isInputFault(fault)),
+	)
 	const said = [...qualification.errors, ...(rating?.errors ?? []), ...authorityErrors]
-	const success =
+	const named = said.length === 0 ? faults.map((fault) => describeFault(fault)) : said
+	const held =
 		qualification.success &&
 		(rating === undefined || rating.success) &&
-		authorityErrors.length === 0
-	// `success` is the verdict, so a borrowed engine that failed and said nothing still has to say so.
-	const errors = !success && said.length === 0 ? ['The program failed and said nothing'] : said
+		(authority === undefined || isSettledResult(authority))
+	// `errors` is the verdict, so a borrowed part that failed and said nothing still has to say so,
+	// and one that says something has failed, whatever it calls success.
+	const errors = !held && named.length === 0 ? ['The program failed and said nothing'] : named
+	const success = errors.length === 0
 	const limited = determinations.some((entry) => entry.effect === 'limit' && entry.state === 'met')
 	const decision =
 		authority !== undefined && success && !limited && status !== 'unrated'
@@ -389,9 +392,7 @@ export function buildProgramResult(
 		success,
 		trace,
 		errors,
-		faults: filterUniqueFaults(
-			[...qualification.faults, ...(rating?.faults ?? [])].filter((fault) => isInputFault(fault)),
-		),
+		faults,
 		repairs: filterUniqueFaults([
 			...(options?.admission?.repairs ?? []),
 			...qualification.repairs,
@@ -426,6 +427,50 @@ export function buildProgramResult(
 export function isInputFault(fault: AuditFault): boolean {
 	const key = isString(fault.path) ? fault.path : fault.path[0]
 	return key !== AGGREGATE_KEY
+}
+
+/**
+ * Determines whether a borrowed authority or gate read everything it needed.
+ *
+ * @param result - The logical result
+ * @returns True if it succeeded with no unread conclusion or rule; false otherwise
+ *
+ * @example
+ * ```ts
+ * import { isSettledResult } from '@orkestrel/program'
+ *
+ * isSettledResult(resolved) // false when any rule reads unread
+ * ```
+ */
+export function isSettledResult(result: LogicalResult): boolean {
+	return (
+		result.success &&
+		result.conclusion !== 'unread' &&
+		result.rules.every((rule) => rule.state !== 'unread')
+	)
+}
+
+/**
+ * Determines whether an error says a borrowed part refused a definition.
+ *
+ * @param error - The error
+ * @returns True for the refusal each part names for an authoring error; false otherwise
+ *
+ * @example
+ * ```ts
+ * import { isDefinitionRefusal } from '@orkestrel/program'
+ * import { ReasonError } from '@orkestrel/reason'
+ *
+ * isDefinitionRefusal(new ReasonError('INVALID', 'No rules')) // true
+ * isDefinitionRefusal(new ReasonError('MISSING', 'No reasoner')) // false
+ * ```
+ */
+export function isDefinitionRefusal(error: unknown): boolean {
+	return (
+		(isReasonError(error) && error.code === 'INVALID') ||
+		(isQualifierError(error) && error.code === 'DEFINITION') ||
+		(isRaterError(error) && error.code === 'DEFINITION')
+	)
 }
 
 /**
@@ -498,16 +543,71 @@ export function findAggregateGap(shape: ContractShape, field: FieldPath): string
 		case 'raw':
 			return 'may be null'
 		case 'union':
-			return shape.variants.some((variant) => findAggregateGap(variant, []) === 'may be null')
-				? 'may be null'
-				: undefined
+			return shape.variants
+				.map((variant) => findAggregateGap(variant, field))
+				.find((gap) => gap !== undefined)
 		case 'object': {
 			if (key === undefined) return undefined
 			const property = Object.hasOwn(shape.properties, key) ? shape.properties[key] : undefined
 			return property === undefined ? 'may be absent' : findAggregateGap(property, rest)
 		}
+		case 'array': {
+			if (key === undefined) return undefined
+			const held = /^\d+$/.test(key) && Number(key) < (shape.min ?? 0)
+			return held ? findAggregateGap(shape.items, rest) : 'may be absent'
+		}
 		default:
 			return key === undefined ? undefined : 'may be absent'
+	}
+}
+
+/**
+ * Determines whether a field a shape declares can only hold a number a sum can read.
+ *
+ * @remarks
+ * A sum counts only finite numbers, so a field that may hold anything else would sum to zero. A
+ * `json` or `raw` field answers true, because `findAggregateGap` already refuses it.
+ *
+ * @param shape - The program's shape
+ * @param field - The aggregate field
+ * @returns True if every value the shape admits at that field is a number; false otherwise
+ *
+ * @example
+ * ```ts
+ * import { literalShape, numberShape, objectShape } from '@orkestrel/contract'
+ * import { matchesNumberField } from '@orkestrel/program'
+ *
+ * const shape = objectShape({ a: numberShape(), b: literalShape(['x']) })
+ * matchesNumberField(shape, 'a') // true
+ * matchesNumberField(shape, 'b') // false
+ * ```
+ */
+export function matchesNumberField(shape: ContractShape, field: FieldPath): boolean {
+	const [key, ...rest] = isString(field) ? [field] : field
+	switch (shape.category) {
+		case 'optional':
+		case 'nullable':
+			return matchesNumberField(shape.inner, field)
+		case 'union':
+			return shape.variants.every((variant) => matchesNumberField(variant, field))
+		case 'object': {
+			const property =
+				key !== undefined && Object.hasOwn(shape.properties, key)
+					? shape.properties[key]
+					: undefined
+			return property !== undefined && matchesNumberField(property, rest)
+		}
+		case 'array':
+			return key !== undefined && matchesNumberField(shape.items, rest)
+		case 'number':
+			return key === undefined
+		case 'literal':
+			return key === undefined && shape.values.every((value) => isFiniteNumber(value))
+		case 'json':
+		case 'raw':
+			return true
+		default:
+			return false
 	}
 }
 
@@ -573,13 +673,11 @@ export function scanProgramShape(definition: ProgramDefinition): ShapeScan {
 		const gap = findAggregateGap(shape, field)
 		return gap === undefined ? [] : [`Aggregate field "${formatField(field)}" ${gap}`]
 	})
-	// A sum counts only finite numbers, so a field no number can fill would sum to zero.
-	const unsummed = (aggregate?.fields ?? []).flatMap((field) => {
-		const category = findFieldShape(shape, field).shape?.category
-		return category === undefined || !UNSUMMED_CATEGORIES.includes(category)
+	const unsummed = (aggregate?.fields ?? []).flatMap((field) =>
+		findAggregateGap(shape, field) !== undefined || matchesNumberField(shape, field)
 			? []
-			: [`Aggregate field "${formatField(field)}" holds no number`]
-	})
+			: [`Aggregate field "${formatField(field)}" may hold no number`],
+	)
 	return {
 		errors: [
 			...nested,
@@ -1218,7 +1316,11 @@ export function buildAggregateResult(
 ): AggregateResult {
 	const gates = options?.gates
 	const gateTrace = gates === undefined ? [] : [...gates.trace]
-	const gateErrors = gates === undefined ? [] : [...gates.errors]
+	const said = [...subjects.flatMap((entry) => entry.errors), ...(gates?.errors ?? [])]
+	const held =
+		subjects.every((entry) => entry.success) && (gates === undefined || isSettledResult(gates))
+	// As for one subject, `errors` is the verdict, and a part that failed silently still says so.
+	const errors = !held && said.length === 0 ? ['The batch failed and said nothing'] : said
 	return {
 		id: definition.id,
 		name: definition.name,
@@ -1228,9 +1330,9 @@ export function buildAggregateResult(
 		tallies,
 		count: subjects.length,
 		sums,
-		success: subjects.every((entry) => entry.success) && gateErrors.length === 0,
+		success: errors.length === 0,
 		trace: [...subjects.flatMap((entry) => entry.trace), ...gateTrace],
-		errors: [...subjects.flatMap((entry) => entry.errors), ...gateErrors],
+		errors,
 		faults: filterUniqueFaults(subjects.flatMap((entry) => entry.faults)),
 		repairs: filterUniqueFaults(subjects.flatMap((entry) => entry.repairs)),
 		defaulted: filterUniqueFields(subjects.flatMap((entry) => entry.defaulted)),

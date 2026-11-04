@@ -7,7 +7,10 @@ import {
 	buildProgramDefinition,
 	createProgram,
 	createProgramDefinitionContract,
+	isAggregateResult,
 	isProgramDefinition,
+	isProgramError,
+	isProgramResult,
 	programResultContract,
 	projectAggregateResult,
 	projectProgramResult,
@@ -27,6 +30,7 @@ import { createQualificationDefinition, createQualifier, createRuling } from '@o
 import { buildLineDefinition, buildRatingDefinition, createRater } from '@orkestrel/rater'
 import {
 	createAtom,
+	createCheck,
 	createFieldFactor,
 	createLogicalDefinition,
 	createLogicalReasoner,
@@ -51,6 +55,7 @@ import {
 	buildAggregateGateProgram,
 	buildAuthorityProgram,
 	buildEligibilityOnlyNoticeMissingScopeDefinition,
+	buildQualificationResult,
 	buildHostileSubject,
 	buildLargeBatch,
 	cleanAuthority,
@@ -88,6 +93,7 @@ import {
 	sharedIdBatchSubjects,
 	standardProgramDefinition,
 	unratedAuthority,
+	unreadLogicalResult,
 } from '../../../setup.js'
 import { standardQualification, standardRating } from '../../../setup.js'
 
@@ -1540,6 +1546,133 @@ describe('Program — what validate refuses', () => {
 	})
 })
 
+describe('Program — what a borrowed part says', () => {
+	const eligible = buildQualificationResult({ eligibility: 'eligible' })
+	const authored = buildProgramDefinition(
+		'p',
+		'P',
+		standardProgramDefinition.qualification,
+		undefined,
+		{ authority: cleanAuthority },
+	)
+
+	it('a door that refuses with no fault still reads incomplete, and decides nothing', () => {
+		const shape: ContractShape = {
+			category: 'object',
+			properties: {
+				n: { category: 'optional', inner: { category: 'number', min: 0 }, default: -1 },
+			},
+		}
+		const program = createProgram(
+			buildProgramDefinition('p', 'P', standardProgramDefinition.qualification, undefined, {
+				shape,
+				authority: cleanAuthority,
+			}),
+			{ validate: false },
+		)
+		const result = program.execute({ n: 1 })
+		expect(result.status).toBe('incomplete')
+		expect(result.eligibility).toBe('referral')
+		expect(result.decision).toBeUndefined()
+		expect(result.success).toBe(false)
+		expect(result.faults).toEqual([])
+		expect(result.errors.length).toBeGreaterThan(0)
+		program.destroy()
+	})
+
+	it('an input fault suppresses a decision, whatever a borrowed qualifier calls success', () => {
+		const fault = { reason: 'missing', path: 'age', expected: 'number' } as const
+		const qualifier = createFixedQualifier(
+			buildQualificationResult({ eligibility: 'ineligible', faults: [fault] }),
+		)
+		const program = createProgram(authored, { qualifier, validate: false })
+		const result = program.execute({ id: 'a' })
+		expect(result.status).toBe('ineligible')
+		expect(result.decision).toBeUndefined()
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual(['Field "age" is missing'])
+		program.destroy()
+		qualifier.destroy()
+	})
+
+	it.each([
+		['failed and said nothing', unreadLogicalResult],
+		['calls itself successful, reading unread', { ...unreadLogicalResult, success: true }],
+		[
+			'holds an unread rule',
+			{
+				...unreadLogicalResult,
+				success: true,
+				conclusion: 'unmet' as const,
+				rules: [{ id: 'r', state: 'unread' as const, premises: ['unread' as const], checks: [] }],
+			},
+		],
+	])('an authority that %s approves nothing', (_name, resolved) => {
+		const qualifier = createFixedQualifier(eligible)
+		const engine = createFixedEngine(resolved)
+		const program = createProgram(authored, { qualifier, engine, validate: false })
+		const result = program.execute({ id: 'a' })
+		expect(result.decision).toBeUndefined()
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual(['The program failed and said nothing'])
+		program.destroy()
+		engine.destroy()
+		qualifier.destroy()
+	})
+
+	it('errors mean failure, whatever a borrowed qualifier calls success', () => {
+		const qualifier = createFixedQualifier(
+			buildQualificationResult({ eligibility: 'eligible', errors: ['failed'] }),
+		)
+		const program = createProgram(authored, { qualifier, validate: false })
+		const result = program.execute({ id: 'a' })
+		expect(result.success).toBe(false)
+		expect(result.errors).toEqual(['failed'])
+		expect(result.decision).toBeUndefined()
+		program.destroy()
+		qualifier.destroy()
+	})
+
+	it('a borrowed engine refusing a pass or a line reaches the caller as DEFINITION', () => {
+		const engine = createReason({
+			reasoners: [createQuantitativeReasoner(), createLogicalReasoner()],
+			bail: false,
+		})
+		const pass = createLogicalDefinition('gates', 'Gates', [
+			createRule('r', [], createAtom('a', 'equals', true)),
+		])
+		const refusedPass = createProgram(
+			buildProgramDefinition('p', 'P', createQualificationDefinition('q', 'Q', [pass])),
+			{ engine, validate: false },
+		)
+		const passError = captureError(() => refusedPass.execute({ id: 'a' }))
+		expect(isProgramError(passError)).toBe(true)
+		expect(passError).toMatchObject({ code: 'DEFINITION', context: 'q' })
+		refusedPass.destroy()
+		const line = buildLineDefinition(
+			'line',
+			'Line',
+			createQuantitativeDefinition('line', 'Line', [
+				createFactorGroup('g', 'sum', [createStaticFactor('f', 1), createStaticFactor('f', 2)]),
+			]),
+		)
+		const refusedLine = createProgram(
+			buildProgramDefinition(
+				'p',
+				'P',
+				createQualificationDefinition('q', 'Q', []),
+				buildRatingDefinition('r', 'R', [line]),
+			),
+			{ engine, validate: false },
+		)
+		const lineError = captureError(() => refusedLine.execute({ id: 'a' }))
+		expect(isProgramError(lineError)).toBe(true)
+		expect(lineError).toMatchObject({ code: 'DEFINITION', context: 'r' })
+		refusedLine.destroy()
+		engine.destroy()
+	})
+})
+
 describe('Program — published contracts', () => {
 	it('a result crosses as its projection: eligible, refused, and rated', () => {
 		const shape = objectShape({ id: stringShape(), licensed: booleanShape() })
@@ -1588,6 +1721,94 @@ describe('Program — published contracts', () => {
 		expect(isProgramDefinition(standardProgramDefinition)).toBe(true)
 		expect(contract.is({ ...standardProgramDefinition, extra: 1 })).toBe(false)
 		expect(isProgramDefinition({ ...standardProgramDefinition, extra: 1 })).toBe(false)
+	})
+
+	it.each([
+		['standard', standardProgramDefinition],
+		['referral', referralProgramDefinition],
+		['scoped', scopedProgramDefinition],
+		['conditional', conditionalProgramDefinition],
+		['scoped referral', scopedReferralProgramDefinition],
+		['notice', noticeProgramDefinition],
+		['empty lines', emptyLinesProgramDefinition],
+		['empty collections', emptyCollectionsProgramDefinition],
+		['batch aggregate', batchAggregateProgramDefinition],
+		['eligibility only', eligibilityOnlyProgramDefinition],
+		['eligibility only, conditional', eligibilityOnlyConditionalProgramDefinition],
+		['eligibility only, referral', eligibilityOnlyReferralProgramDefinition],
+		['eligibility only, with an authority', eligibilityOnlyWithAuthorityProgramDefinition],
+		['failed qualification, with an authority', failedQualificationWithAuthorityProgramDefinition],
+		['every line scoped out', allLinesScopedOutProgramDefinition],
+		['broken gates', brokenAggregateGateProgramDefinition],
+		['broken authority', brokenAuthorityProgramDefinition],
+	])('the contract and the guard agree on the %s definition', (_name, definition) => {
+		expect(createProgramDefinitionContract().is(definition)).toBe(isProgramDefinition(definition))
+	})
+
+	it.each([
+		['undefined', undefined],
+		['NaN', Number.NaN],
+		['a number', 5],
+		['text', 'x'],
+		['a bigint', 1n],
+		['an object holding NaN', { b: Number.NaN }],
+	])('real results over %s pass the guard, and cross as their projection', (_name, a) => {
+		const pass = createLogicalDefinition('gates', 'Gates', [
+			createRule('r', [createAtom('a', 'above', 1)], createAtom('ok', 'equals', true)),
+		])
+		const line = buildLineDefinition(
+			'line',
+			'Line',
+			createQuantitativeDefinition('line', 'Line', [
+				createFactorGroup('g', 'sum', [createFieldFactor('f', 'a')]),
+			]),
+		)
+		const program = createProgram(
+			buildProgramDefinition(
+				'mix',
+				'Mix',
+				createQualificationDefinition('q', 'Q', [pass]),
+				buildRatingDefinition('r', 'R', [line]),
+			),
+		)
+		const single = program.execute({ id: 'a', a })
+		expect(isProgramResult(single)).toBe(true)
+		expect(programResultContract.audit(projectProgramResult(single))).toEqual([])
+		const batch = program.execute([{ id: 'a', a }])
+		expect(isAggregateResult(batch)).toBe(true)
+		expect(aggregateResultContract.audit(projectAggregateResult(batch))).toEqual([])
+		program.destroy()
+	})
+
+	it('a NaN rating passes the guard, and crosses as its projection', () => {
+		const line = buildLineDefinition(
+			'line',
+			'Line',
+			createQuantitativeDefinition(
+				'line',
+				'Line',
+				[
+					createFactorGroup('g', 'sum', [
+						createStaticFactor('s', 5, { checks: [createCheck('seats', 'above', 999)] }),
+					]),
+				],
+				{ aggregation: 'minimum' },
+			),
+		)
+		const program = createProgram(
+			buildProgramDefinition(
+				'nan',
+				'NaN',
+				createQualificationDefinition('q', 'Q', []),
+				buildRatingDefinition('r', 'R', [line]),
+			),
+		)
+		const result = program.execute({ seats: 1 })
+		expect(result.rating?.lines[0]?.amount).toBeUndefined()
+		expect(result.rating?.lines[0]?.worksheet.value).toBeNaN()
+		expect(isProgramResult(result)).toBe(true)
+		expect(programResultContract.audit(projectProgramResult(result))).toEqual([])
+		program.destroy()
 	})
 
 	it('names the gap: is admits a malformed nested shape, and the guard refuses it', () => {

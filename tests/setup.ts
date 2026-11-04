@@ -1115,6 +1115,20 @@ export const brokenAuthorityProgramDefinition = buildProgramDefinition(
 )
 
 /** Reuses the standard qualification for an eligibility-only definition with no `rating`. */
+/** Defines a logical result a borrowed engine could return, which could not read its rule. */
+export const unreadLogicalResult: LogicalResult = {
+	reasoning: 'logical',
+	conclusion: 'unread',
+	rules: [],
+	count: 0,
+	success: false,
+	trace: [],
+	errors: [],
+	faults: [],
+	repairs: [],
+	defaulted: [],
+}
+
 export const eligibilityOnlyProgramDefinition = buildProgramDefinition(
 	'eligibility-only',
 	'Eligibility-only program',

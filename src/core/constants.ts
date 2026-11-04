@@ -20,14 +20,6 @@ export const STATUSES = Object.freeze([
 	'eligible',
 ] as const)
 
-/** Lists the shape categories no aggregate sum can read a number from. */
-export const UNSUMMED_CATEGORIES: readonly string[] = Object.freeze([
-	'string',
-	'boolean',
-	'array',
-	'object',
-])
-
 /** Lists every {@link Decision} literal, the source the decision shape reads. */
 export const DECISIONS: readonly Decision[] = Object.freeze(['approved', 'denied', 'submitted'])
 

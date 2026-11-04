@@ -2,10 +2,8 @@ import type { EmitterInterface } from '@orkestrel/emitter'
 import type { QualificationResult, QualifierInterface } from '@orkestrel/qualifier'
 import type { RaterInterface, RatingResult } from '@orkestrel/rater'
 import type {
-	LogicalDefinition,
 	LogicalResult,
 	ReasonInterface,
-	ReasonResult,
 	ReasonValidationResult,
 	Subject,
 	SubjectAdmission,
@@ -24,7 +22,7 @@ import type {
 	Tally,
 } from '../types.js'
 import { Emitter } from '@orkestrel/emitter'
-import { attempt, isArray, isObject } from '@orkestrel/contract'
+import { attempt, errorToMessage, isArray, isObject } from '@orkestrel/contract'
 import { createQualifier, isQualificationResult } from '@orkestrel/qualifier'
 import { createRater, isRatingResult } from '@orkestrel/rater'
 import {
@@ -33,7 +31,6 @@ import {
 	createReason,
 	createSubjectDoor,
 	isLogicalResult,
-	isReasonError,
 } from '@orkestrel/reason'
 import { DEFAULT_PROGRAM_VALIDATE, OUTCOME_KEY } from '../constants.js'
 import { ProgramError } from '../errors.js'
@@ -53,6 +50,7 @@ import {
 	buildQualificationSubject,
 	buildRefusedQualification,
 	deriveStatus,
+	isDefinitionRefusal,
 	selectProgramLines,
 	tallySubject,
 	validateProgramDefinition,
@@ -323,15 +321,16 @@ export class Program implements ProgramInterface {
 		if (admitted === undefined) {
 			const refused = buildRefusedQualification(this.definition.qualification, admission)
 			this.#emitter.emit('qualify', refused)
-			const status = deriveStatus(this.definition, refused)
-			const result = buildProgramResult(this.definition, refused, undefined, [], status, {
+			const result = buildProgramResult(this.definition, refused, undefined, [], 'incomplete', {
 				admission,
 			})
 			this.#emitter.emit('execute', result)
 			return result
 		}
 		const qualified = buildQualificationSubject(admitted, aggregate)
-		const qualification = this.#qualifier.qualify(qualified, this.definition.qualification)
+		const qualification = this.#read(this.definition.qualification.id, () =>
+			this.#qualifier.qualify(qualified, this.definition.qualification),
+		)
 		if (!isQualificationResult(qualification)) {
 			throw new ProgramError(
 				'MISMATCH',
@@ -346,7 +345,10 @@ export class Program implements ProgramInterface {
 		}
 
 		const lines = selectProgramLines(this.definition.rating?.lines ?? [], qualification.scopes)
-		const rating = lines.length === 0 ? undefined : this.#rater.rate(lines, admitted)
+		const rating =
+			lines.length === 0
+				? undefined
+				: this.#read(this.definition.rating?.id, () => this.#rater.rate(lines, admitted))
 		if (rating !== undefined) {
 			if (!isRatingResult(rating)) {
 				throw new ProgramError(
@@ -383,7 +385,7 @@ export class Program implements ProgramInterface {
 		}
 
 		const outcome = { [OUTCOME_KEY]: buildOutcomeProjection(initial) }
-		const resolved = this.#reason(outcome, authority)
+		const resolved = this.#read(authority.id, () => this.#engine.reason(outcome, authority))
 		if (!isLogicalResult(resolved)) {
 			throw new ProgramError('MISMATCH', 'Authority returned invalid logical result', authority.id)
 		}
@@ -462,7 +464,7 @@ export class Program implements ProgramInterface {
 		if (gates === undefined) return { determinations: [] }
 
 		const record = buildAggregateRecord(count, sums, groups)
-		const resolved = this.#reason(record, gates)
+		const resolved = this.#read(gates.id, () => this.#engine.reason(record, gates))
 		if (!isLogicalResult(resolved)) {
 			throw new ProgramError(
 				'MISMATCH',
@@ -476,12 +478,12 @@ export class Program implements ProgramInterface {
 		return { determinations, resolved }
 	}
 
-	// A definition a borrowed engine refuses is an authoring error, so it reaches the caller as one.
-	#reason(subject: Subject, definition: LogicalDefinition): ReasonResult {
-		const outcome = attempt(() => this.#engine.reason(subject, definition))
+	// A definition a borrowed part refuses is an authoring error, so it reaches the caller as one.
+	#read<T>(id: string | undefined, read: () => T): T {
+		const outcome = attempt(read)
 		if (outcome.success) return outcome.value
-		if (isReasonError(outcome.error) && outcome.error.code === 'INVALID') {
-			throw new ProgramError('DEFINITION', outcome.error.message, definition.id, outcome.error)
+		if (isDefinitionRefusal(outcome.error)) {
+			throw new ProgramError('DEFINITION', errorToMessage(outcome.error), id, outcome.error)
 		}
 		throw outcome.error
 	}

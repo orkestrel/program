@@ -43,7 +43,10 @@ import {
 	findMissingScopes,
 	formatGroupKey,
 	hasProgramKey,
+	isDefinitionRefusal,
 	isInputFault,
+	isSettledResult,
+	matchesNumberField,
 	scanProgramShape,
 	selectProgramLines,
 	sumFields,
@@ -52,7 +55,7 @@ import {
 } from '@src/core'
 import { createQualifier } from '@orkestrel/qualifier'
 import { createRater } from '@orkestrel/rater'
-import { buildLineDefinition, buildRatingDefinition } from '@orkestrel/rater'
+import { buildLineDefinition, buildRatingDefinition, RaterError } from '@orkestrel/rater'
 import {
 	createAtom,
 	createLogicalDefinition,
@@ -60,6 +63,7 @@ import {
 	createQuantitativeReasoner,
 	createReason,
 	createRule,
+	ReasonError,
 } from '@orkestrel/reason'
 import {
 	baseLine,
@@ -78,9 +82,10 @@ import {
 	standardProgramDefinition,
 	standardQualification,
 	standardRating,
+	unreadLogicalResult,
 } from '../../setup.js'
 import { buildNotice, buildProgramDefinition } from '@src/core'
-import { createQualificationDefinition, createRuling } from '@orkestrel/qualifier'
+import { createQualificationDefinition, createRuling, QualifierError } from '@orkestrel/qualifier'
 
 describe('helpers', () => {
 	describe('hasProgramKey', () => {
@@ -1172,6 +1177,105 @@ describe('isInputFault', () => {
 	})
 })
 
+describe('isSettledResult', () => {
+	const settled = { ...unreadLogicalResult, success: true, conclusion: 'unmet' as const }
+
+	it('reads a successful result with nothing unread as settled', () => {
+		expect(isSettledResult(settled)).toBe(true)
+	})
+
+	it('refuses a failure, an unread conclusion, and an unread rule', () => {
+		expect(isSettledResult({ ...settled, success: false })).toBe(false)
+		expect(isSettledResult({ ...settled, conclusion: 'unread' })).toBe(false)
+		expect(
+			isSettledResult({
+				...settled,
+				rules: [{ id: 'r', state: 'unread', premises: ['unread'], checks: [] }],
+			}),
+		).toBe(false)
+	})
+})
+
+describe('isDefinitionRefusal', () => {
+	it('reads each part naming an authoring error', () => {
+		expect(isDefinitionRefusal(new ReasonError('INVALID', 'no'))).toBe(true)
+		expect(isDefinitionRefusal(new QualifierError('DEFINITION', 'no'))).toBe(true)
+		expect(isDefinitionRefusal(new RaterError('DEFINITION', 'no'))).toBe(true)
+	})
+
+	it('leaves every other error alone', () => {
+		expect(isDefinitionRefusal(new ReasonError('MISSING', 'no'))).toBe(false)
+		expect(isDefinitionRefusal(new QualifierError('ENGINE', 'no'))).toBe(false)
+		expect(isDefinitionRefusal(new RaterError('MISMATCH', 'no'))).toBe(false)
+		expect(isDefinitionRefusal(new Error('no'))).toBe(false)
+		expect(isDefinitionRefusal(undefined)).toBe(false)
+	})
+})
+
+describe('matchesNumberField', () => {
+	const shape = objectShape({
+		count: numberShape(),
+		tier: literalShape([1, 2]),
+		word: literalShape(['x']),
+		either: unionShape(numberShape(), stringShape()),
+		held: optionalShape(numberShape(), { default: 0 }),
+		list: arrayShape(numberShape()),
+		home: objectShape({ rooms: numberShape() }),
+		json: jsonShape(),
+	})
+
+	it('answers true where only a number can sit', () => {
+		expect(matchesNumberField(shape, 'count')).toBe(true)
+		expect(matchesNumberField(shape, 'tier')).toBe(true)
+		expect(matchesNumberField(shape, 'held')).toBe(true)
+		expect(matchesNumberField(shape, ['list', '0'])).toBe(true)
+		expect(matchesNumberField(shape, ['home', 'rooms'])).toBe(true)
+	})
+
+	it('answers false where something else can sit', () => {
+		expect(matchesNumberField(shape, 'word')).toBe(false)
+		expect(matchesNumberField(shape, 'either')).toBe(false)
+		expect(matchesNumberField(shape, 'list')).toBe(false)
+		expect(matchesNumberField(shape, 'home')).toBe(false)
+		expect(matchesNumberField(shape, 'ghost')).toBe(false)
+		expect(matchesNumberField(shape, ['count', 'part'])).toBe(false)
+	})
+
+	it('leaves an untyped field to the gap check', () => {
+		expect(matchesNumberField(shape, 'json')).toBe(true)
+	})
+})
+
+describe('buildAggregateResult, on what its parts say', () => {
+	it('reads a gate that failed and said nothing as a failed batch that says so', () => {
+		const aggregate = buildAggregateResult(
+			standardProgramDefinition,
+			[],
+			[],
+			[],
+			buildEmptyTallies([]),
+			{},
+			{ gates: unreadLogicalResult },
+		)
+		expect(aggregate.success).toBe(false)
+		expect(aggregate.errors).toEqual(['The batch failed and said nothing'])
+	})
+
+	it('reads an error a gate names as failure, whatever the gate calls success', () => {
+		const aggregate = buildAggregateResult(
+			standardProgramDefinition,
+			[],
+			[],
+			[],
+			buildEmptyTallies([]),
+			{},
+			{ gates: { ...unreadLogicalResult, success: true, conclusion: 'unmet', errors: ['failed'] } },
+		)
+		expect(aggregate.success).toBe(false)
+		expect(aggregate.errors).toEqual(['failed'])
+	})
+})
+
 describe('buildRefusedQualification', () => {
 	it('stands in for a refused subject with what the door said and nothing found', () => {
 		const fault = { reason: 'extra', path: 'x' } as const
@@ -1233,6 +1337,33 @@ describe('findAggregateGap', () => {
 		expect(findAggregateGap(shape, ['list', '0'])).toBe('may be absent')
 	})
 
+	it('reads a path through every arm of a union', () => {
+		const box = objectShape({
+			box: unionShape(
+				objectShape({ amount: numberShape() }),
+				objectShape({ label: stringShape() }),
+			),
+			both: unionShape(
+				objectShape({ amount: numberShape() }),
+				objectShape({ amount: numberShape(), label: stringShape() }),
+			),
+		})
+		expect(findAggregateGap(box, ['box', 'amount'])).toBe('may be absent')
+		expect(findAggregateGap(box, ['both', 'amount'])).toBeUndefined()
+	})
+
+	it('reads an array index the minimum length guarantees as held', () => {
+		const lists = objectShape({
+			some: arrayShape(numberShape(), { min: 2 }),
+			any: arrayShape(numberShape()),
+		})
+		expect(findAggregateGap(lists, ['some', '0'])).toBeUndefined()
+		expect(findAggregateGap(lists, ['some', '1'])).toBeUndefined()
+		expect(findAggregateGap(lists, ['some', '2'])).toBe('may be absent')
+		expect(findAggregateGap(lists, ['some', 'x'])).toBe('may be absent')
+		expect(findAggregateGap(lists, ['any', '0'])).toBe('may be absent')
+	})
+
 	it('finds a field the shape lets be null, a json and a raw field included', () => {
 		expect(findAggregateGap(shape, 'empty')).toBe('may be null')
 		expect(findAggregateGap(shape, 'none')).toBe('may be null')
@@ -1288,10 +1419,36 @@ describe('scanProgramShape', () => {
 			),
 		})
 		expect(scanProgramShape(definition).errors).toEqual([
-			'Aggregate field "name" holds no number',
-			'Aggregate field "flag" holds no number',
-			'Aggregate field "list" holds no number',
-			'Aggregate field "home" holds no number',
+			'Aggregate field "name" may hold no number',
+			'Aggregate field "flag" may hold no number',
+			'Aggregate field "list" may hold no number',
+			'Aggregate field "home" may hold no number',
+		])
+	})
+
+	it('reads a literal and a union by what they hold, and a list by its elements', () => {
+		const definition = buildProgramDefinition('p', 'P', empty, undefined, {
+			shape: objectShape({
+				word: literalShape(['x']),
+				mixed: literalShape(['x', 1]),
+				numeric: literalShape([1, 2]),
+				either: unionShape(numberShape(), stringShape()),
+				numbers: unionShape(numberShape(), literalShape([1])),
+				amounts: arrayShape(numberShape(), { min: 1 }),
+			}),
+			aggregate: buildAggregateDefinition([
+				'word',
+				'mixed',
+				'numeric',
+				'either',
+				'numbers',
+				['amounts', '0'],
+			]),
+		})
+		expect(scanProgramShape(definition).errors).toEqual([
+			'Aggregate field "word" may hold no number',
+			'Aggregate field "mixed" may hold no number',
+			'Aggregate field "either" may hold no number',
 		])
 	})
 
