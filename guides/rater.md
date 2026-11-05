@@ -53,34 +53,37 @@ plain line list resolves to that form; a `RatingDefinition` resolves the same wa
 through its own `lines`. Each overload rates exactly one subject — there is no batch
 overload, and the subject must be a plain record or `rate` throws `RaterError`
 `'MISMATCH'`; an input that is neither an array of lines nor a `RatingDefinition`
-throws `RaterError` `'DEFINITION'`. A line that fails to resolve (a missing lookup
-entry, a failed required factor) is a rating failure reported on its own `LineResult`
-(`worksheet.success: false`, no `amount`, a populated `worksheet.errors`) — the caller decides
+throws `RaterError` `'DEFINITION'`, and so does a line definition the engine's `validate` refuses. A line that cannot resolve (a missing field, a lookup miss with no `fallback`, a failed required factor) is a rating failure reported on its own `LineResult`
+(`worksheet.success: false`, no `amount`, a populated `worksheet.errors`, and `worksheet.faults` when an input is what it could not read) — the caller decides
 what to do with a failed line, and `Rater` reports exactly what each line resolved
 to. `total` is derived from every line's `amount` by a `TotalHandler` (default
-`sumAmounts`, overridable through `RaterOptions.total`). A `LineResult` carries an
+`sumAmounts`, overridable through `RaterOptions.total`), only when every line rated, because a total over a line that refused would read as an answer for the whole subject. A `LineResult` carries an
 `amount` only when its `worksheet.success` is `true`, and a `RatingResult`'s `success`
-is `true` only when every line's `worksheet.success` is `true`.
+is `true` only when every line's `worksheet.success` is `true`. A `RatingResult` names what stopped it: `faults` lists each input no line could read, once per field, and `errors` holds one string per fault plus what no fault can say, carrying the line id.
+
+A `RatingDefinition` may carry a `shape`, which admits the subject through `reason`'s door before any line reads it. A refusal rates no line and names each fault, and `repairs` and `defaulted` report what the door changed. The shape is checked once per definition against what its lines read, and a shape that cannot stand or misses a field throws `RaterError` `'DEFINITION'`. A plain line list has no door.
+
+A definition crosses a boundary on `ratingDefinitionContract.is`, never `parse`. The contract checks nested shapes structurally, so `shape: 42` fails both the contract and `isRatingDefinition`. A result crosses as `projectRatingResult`, which `ratingResultContract` admits, because an evidence row's `actual` holds whatever the subject held and a worksheet's numbers may be `NaN`.
 
 ### Types
 
-| Name               | Kind      | Signature                                                                             | Summary                                                                              |
-| ------------------ | --------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `WorksheetStage`   | type      | `'factor' \| 'group' \| 'total'`                                                      | Names a worksheet derivation step stage.                                             |
-| `RaterErrorCode`   | type      | `'DEFINITION' \| 'MISMATCH' \| 'DESTROYED'`                                           | Names a coded `RaterError` programmer-error code.                                    |
-| `TotalHandler`     | type      | `(lines: readonly LineResult[]) => number \| undefined`                               | Represents a pure total port over resolved lines.                                    |
-| `LineDefinition`   | interface | `{ id, name, description?, rate, metadata? }`                                         | Represents one rateable line — a quantitative definition joined to display metadata. |
-| `RatingDefinition` | interface | `{ id, name, description?, lines, metadata? }`                                        | Represents a pure authored rating — a named, ordered set of lines.                   |
-| `Evidence`         | interface | `{ field?, label?, comparison?, expected?, actual?, met? }`                           | Represents a checked-evidence row rendered into a display-neutral sentence.          |
-| `WorksheetFactor`  | interface | `{ id, name?, description?, applied, value?, evidence }`                              | Represents a resolved quantitative factor, joined to its authored metadata.          |
-| `WorksheetGroup`   | interface | `{ id, name?, description?, applied, value, factors }`                                | Represents a resolved quantitative group, joined to its authored metadata.           |
-| `Step`             | interface | `{ stage, id?, name?, value, expression? }`                                           | Represents a display-neutral worksheet derivation step.                              |
-| `Worksheet`        | interface | `{ id, name, aggregation, precision?, value, groups, steps, trace, errors, success }` | Represents a quantitative definition joined to its result — the rating audit trail.  |
-| `LineResult`       | interface | `{ id, name, amount?, worksheet }`                                                    | Represents one line's rating outcome.                                                |
-| `RatingResult`     | interface | `{ lines, total?, success }`                                                          | Represents a rated outcome across every line of one `rate` call.                     |
-| `RaterEventMap`    | type      | `{ readonly rate: readonly [subject: Subject, result: RatingResult]; }`               | Represents the push observation surface of a `RaterInterface`.                       |
-| `RaterOptions`     | interface | `{ on?, error?, engine?, total?, labels? }`                                           | Configures `createRater` and the `Rater` constructor.                                |
-| `RaterInterface`   | interface | `{ emitter, rate(), destroy() }`                                                      | Represents the rating orchestrator over the shared quantitative reasoning engine.    |
+| Name               | Kind      | Signature                                                                                                         | Summary                                                                              |
+| ------------------ | --------- | ----------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `WorksheetStage`   | type      | `'factor' \| 'group' \| 'total'`                                                                                  | Names a worksheet derivation step stage.                                             |
+| `RaterErrorCode`   | type      | `'DEFINITION' \| 'MISMATCH' \| 'DESTROYED'`                                                                       | Names a coded `RaterError` programmer-error code.                                    |
+| `TotalHandler`     | type      | `(lines: readonly LineResult[]) => number \| undefined`                                                           | Represents a pure total port over resolved lines.                                    |
+| `LineDefinition`   | interface | `{ id, name, description?, rate, metadata? }`                                                                     | Represents one rateable line — a quantitative definition joined to display metadata. |
+| `RatingDefinition` | interface | `{ id, name, description?, lines, metadata?, shape? }`                                                            | Represents a pure authored rating — a named, ordered set of lines.                   |
+| `Evidence`         | interface | `{ field?, label?, comparison?, expected?, actual?, state? }`                                                     | Represents a checked-evidence row rendered into a display-neutral sentence.          |
+| `WorksheetFactor`  | interface | `{ id, name?, description?, applied, value?, evidence }`                                                          | Represents a resolved quantitative factor, joined to its authored metadata.          |
+| `WorksheetGroup`   | interface | `{ id, name?, description?, applied, value, factors }`                                                            | Represents a resolved quantitative group, joined to its authored metadata.           |
+| `Step`             | interface | `{ stage, id?, name?, value, expression? }`                                                                       | Represents a display-neutral worksheet derivation step.                              |
+| `Worksheet`        | interface | `{ id, name, aggregation, precision?, value, groups, steps, trace, errors, success, faults, repairs, defaulted }` | Represents a quantitative definition joined to its result — the rating audit trail.  |
+| `LineResult`       | interface | `{ id, name, amount?, worksheet }`                                                                                | Represents one line's rating outcome.                                                |
+| `RatingResult`     | interface | `{ lines, total?, success, errors, faults, repairs, defaulted }`                                                  | Represents a rated outcome across every line of one `rate` call.                     |
+| `RaterEventMap`    | type      | `{ readonly rate: readonly [subject: Subject, result: RatingResult]; }`                                           | Represents the push observation surface of a `RaterInterface`.                       |
+| `RaterOptions`     | interface | `{ on?, error?, engine?, total?, labels? }`                                                                       | Configures `createRater` and the `Rater` constructor.                                |
+| `RaterInterface`   | interface | `{ emitter, rate(), destroy() }`                                                                                  | Represents the rating orchestrator over the shared quantitative reasoning engine.    |
 
 `RaterInterface`'s `emitter` is a `readonly` data member and stays in this table's
 `Signature` cell; the interface's call-signature members are documented under
@@ -142,13 +145,19 @@ Each guard answers `true` for a value of its own shape:
 
 ```ts
 import { isLineDefinition, isRatingDefinition, isWorksheetStage } from '@orkestrel/rater'
-import { createQuantitativeDefinition } from '@orkestrel/reason'
+import {
+	createFactorGroup,
+	createQuantitativeDefinition,
+	createStaticFactor,
+} from '@orkestrel/reason'
 
 isWorksheetStage('group') // true
 isLineDefinition({
 	id: 'base',
 	name: 'Base Amount',
-	rate: createQuantitativeDefinition('base', 'Base', []),
+	rate: createQuantitativeDefinition('base', 'Base', [
+		createFactorGroup('amount', 'sum', [createStaticFactor('flat', 100)]),
+	]),
 }) // true
 isRatingDefinition({ id: 'r1', name: 'Rating', lines: [] }) // true
 ```
@@ -160,9 +169,10 @@ and the worksheet-joining behind `Rater`'s `rate` projection.
 
 | Name                    | Kind     | Signature                                                                                                                                                  | Summary                                                                                                                                                     |
 | ----------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `projectRatingResult`   | function | `(result: RatingResult) => JSONValue \| undefined`                                                                                                         | Projects a result to the JSON its contract reads.                                                                                                           |
 | `buildLineDefinition`   | function | `(id: string, name: string, rate: QuantitativeDefinition, overrides?: Partial<Omit<LineDefinition, 'id' \| 'name' \| 'rate'>>) => LineDefinition`          | Builds a fresh `LineDefinition` from a line id, a display name, and the line's quantitative rating definition, with `overrides` merged over those defaults. |
 | `buildRatingDefinition` | function | `(id: string, name: string, lines: readonly LineDefinition[], overrides?: Partial<Omit<RatingDefinition, 'id' \| 'name' \| 'lines'>>) => RatingDefinition` | Builds a fresh `RatingDefinition` from a rating id, a display name, and the rating's ordered lines, with `overrides` merged over those defaults.            |
-| `buildEvidence`         | function | `(check: Check, actual: unknown, met: boolean \| undefined, labels?: Readonly<Record<string, string>>) => Evidence`                                        | Builds an `Evidence` row from an evaluated `Check`.                                                                                                         |
+| `buildEvidence`         | function | `(check: Check, actual: unknown, state: CheckState \| undefined, labels?: Readonly<Record<string, string>>) => Evidence`                                   | Builds an `Evidence` row from an evaluated `Check`.                                                                                                         |
 | `buildEvidenceRows`     | function | `(checks: readonly Check[] \| undefined, results: readonly CheckResult[] \| undefined, labels?: Readonly<Record<string, string>>) => readonly Evidence[]`  | Builds one evidence row per authored check of a quantitative factor, joined to that check's evaluated result.                                               |
 | `buildWorksheetFactor`  | function | `(definition: Factor, results: readonly FactorResult[], labels?: Readonly<Record<string, string>>) => WorksheetFactor`                                     | Joins one authored quantitative factor to its evaluated `FactorResult`.                                                                                     |
 | `buildWorksheetGroup`   | function | `(definition: QuantitativeDefinition['groups'][number], results: readonly GroupResult[], labels?: Readonly<Record<string, string>>) => WorksheetGroup`     | Joins one authored quantitative group to its evaluated `GroupResult`.                                                                                       |
@@ -177,12 +187,18 @@ entirely:
 
 ```ts
 import { buildLineDefinition, buildRatingDefinition } from '@orkestrel/rater'
-import { createQuantitativeDefinition } from '@orkestrel/reason'
+import {
+	createFactorGroup,
+	createQuantitativeDefinition,
+	createStaticFactor,
+} from '@orkestrel/reason'
 
 const base = buildLineDefinition(
 	'base',
 	'Base Amount',
-	createQuantitativeDefinition('base', 'Base', []),
+	createQuantitativeDefinition('base', 'Base', [
+		createFactorGroup('amount', 'sum', [createStaticFactor('flat', 100)]),
+	]),
 )
 buildRatingDefinition('r1', 'Rating', [base])
 buildRatingDefinition('r1', 'Rating', [base], { description: 'A rating' }) // overrides merged over the defaults
@@ -197,9 +213,9 @@ import { buildEvidence, buildEvidenceRows } from '@orkestrel/rater'
 import { createCheck } from '@orkestrel/reason'
 
 const evaluated = createCheck('age', 'above', 18)
-buildEvidence(evaluated, 25, true) // { field: 'age', comparison: 'above', expected: 18, actual: 25, met: true }
-buildEvidence(evaluated, 25, true, { age: 'Age' }) // labels override → adds { label: 'Age' }
-buildEvidenceRows([evaluated], [{ field: 'age', met: true, actual: 25 }])
+buildEvidence(evaluated, 25, 'met') // { field: 'age', comparison: 'above', expected: 18, actual: 25, state: 'met' }
+buildEvidence(evaluated, 25, 'met', { age: 'Age' }) // labels override → adds { label: 'Age' }
+buildEvidenceRows([evaluated], [{ field: 'age', state: 'met', actual: 25 }])
 ```
 
 Worksheet joining and line assembly — one authored quantitative definition and its
@@ -274,6 +290,37 @@ const rater = createRater()
 rater.destroy()
 ```
 
+### Shapes
+
+The definition and result as `ContractShape` values.
+
+| Name                    | Kind  | Signature       | Summary                                               |
+| ----------------------- | ----- | --------------- | ----------------------------------------------------- |
+| `ratingResultShape`     | const | `ContractShape` | Describes a `RatingResult` in its JSON projection.    |
+| `lineResultShape`       | const | `ContractShape` | Describes a `LineResult` in its JSON projection.      |
+| `worksheetShape`        | const | `ContractShape` | Describes a `Worksheet` in its JSON projection.       |
+| `worksheetStepShape`    | const | `ContractShape` | Describes a `Step` in its JSON projection.            |
+| `worksheetGroupShape`   | const | `ContractShape` | Describes a `WorksheetGroup` in its JSON projection.  |
+| `worksheetFactorShape`  | const | `ContractShape` | Describes a `WorksheetFactor` in its JSON projection. |
+| `evidenceShape`         | const | `ContractShape` | Describes an `Evidence` row in its JSON projection.   |
+| `ratingDefinitionShape` | const | `ContractShape` | Describes a `RatingDefinition`.                       |
+| `lineDefinitionShape`   | const | `ContractShape` | Describes a `LineDefinition`.                         |
+
+### Contracts
+
+The compiled contracts. Cross a definition on `is`, never `parse`, and a result as `projectRatingResult`.
+
+| Name                       | Kind  | Signature                    | Summary                                                                                         |
+| -------------------------- | ----- | ---------------------------- | ----------------------------------------------------------------------------------------------- |
+| `ratingResultContract`     | const | `ContractInterface<unknown>` | Publishes a `RatingResult`'s JSON projection as a contract, read through `projectRatingResult`. |
+| `ratingDefinitionContract` | const | `ContractInterface<unknown>` | Publishes a `RatingDefinition` as a contract. Cross it on `is`, never `parse`.                  |
+
+### Constants
+
+| Name               | Kind  | Signature                               | Summary                                                     |
+| ------------------ | ----- | --------------------------------------- | ----------------------------------------------------------- |
+| `WORKSHEET_STAGES` | const | `readonly ['factor', 'group', 'total']` | Lists the stages a worksheet derivation step can belong to. |
+
 ### Classes
 
 | Name    | Kind  | Signature                                        | Summary                                                                                                                                   |
@@ -304,13 +351,19 @@ return equal results for the same lines:
 
 ```ts
 import { buildLineDefinition, createRater } from '@orkestrel/rater'
-import { createQuantitativeDefinition } from '@orkestrel/reason'
+import {
+	createFactorGroup,
+	createQuantitativeDefinition,
+	createStaticFactor,
+} from '@orkestrel/reason'
 
 const rater = createRater()
 const base = buildLineDefinition(
 	'base',
 	'Base Amount',
-	createQuantitativeDefinition('base', 'Base', []),
+	createQuantitativeDefinition('base', 'Base', [
+		createFactorGroup('amount', 'sum', [createStaticFactor('flat', 100)]),
+	]),
 )
 
 rater.rate([base], { id: 'subject-1' }) // the array-of-lines overload
