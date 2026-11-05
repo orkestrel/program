@@ -640,7 +640,7 @@ describe('the qualification fixtures', () => {
 
 		expect(result.success).toBe(false)
 		expect(result.eligibility).toBe('referral')
-		expect(result.errors).toEqual(['Field "missing" is missing'])
+		expect(result.errors).toEqual(['missing: missing; expected number'])
 	})
 })
 
