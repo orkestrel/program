@@ -713,9 +713,9 @@ allowed.
 An `AggregateResult` gathers its subjects' `faults`, `repairs`, and `defaulted`, each once by path, and
 each subject keeps its own. A result crosses a boundary as `projectProgramResult` or
 `projectAggregateResult`, which `programResultContract` and `aggregateResultContract` admit. A
-definition crosses on `createProgramDefinitionContract().is`, never `parse`. `is` reads a nested
-`shape` as any JSON value and the guard reads it as a shape, so `shape: 42` passes `is` and
-`isProgramDefinition` refuses it: a definition crossing a boundary goes through the guard as well.
+definition crosses on `createProgramDefinitionContract().is`, never `parse`. The contract validates
+a nested `shape` through `shapeShape`, so both its `is` method and the `isProgramDefinition` guard
+refuse a malformed declaration such as `shape: 42`.
 
 ### Success
 
