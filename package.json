@@ -1,6 +1,6 @@
 {
 	"name": "@orkestrel/program",
-	"version": "0.0.23",
+	"version": "0.0.24",
 	"description": "A program composition layer that orchestrates @orkestrel/qualifier and @orkestrel/rater into one execute workflow with notices, authority, status, decisions, and batch aggregation. Part of the @orkestrel line.",
 	"keywords": [
 		"aggregate",
@@ -79,13 +79,13 @@
 	"dependencies": {
 		"@orkestrel/contract": "^0.0.27",
 		"@orkestrel/emitter": "^0.0.19",
-		"@orkestrel/qualifier": "^0.0.24",
-		"@orkestrel/rater": "^0.0.24",
-		"@orkestrel/reason": "^0.0.20"
+		"@orkestrel/qualifier": "^0.0.25",
+		"@orkestrel/rater": "^0.0.25",
+		"@orkestrel/reason": "^0.0.21"
 	},
 	"devDependencies": {
 		"@microsoft/api-extractor": "^7.60.1",
-		"@orkestrel/guide": "^0.0.33",
+		"@orkestrel/guide": "^0.0.34",
 		"@orkestrel/probe": "^0.0.32",
 		"@orkestrel/scaffold": "^0.0.144",
 		"@orkestrel/test": "^0.0.45",
